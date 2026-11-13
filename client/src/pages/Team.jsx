@@ -82,7 +82,7 @@ function InviteBox({ teamId }) {
       {invite ? (
         <>
           <div className="row">
-            <code className="invite-code" aria-label="Invite code">
+            <code className="invite-code" aria-label="Current invite code">
               {invite.code}
             </code>
             <button className="btn btn-sm" onClick={copy}>

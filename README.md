@@ -19,7 +19,7 @@ People create teams, invite others with expiring codes, request to join (the lea
 | Security | JWT (HS256 pinned), bcrypt, leader-only actions, 50-bit hashed invite codes, rate limits, zod validation everywhere |
 | Audit log | who / what / when, written in the same transaction |
 | Teammate suggestions | `0.7 × missing-skill coverage + 0.3 × timezone closeness`, with a per-result breakdown |
-| Tests + CI | **39 tests** (Vitest + Supertest on a real MongoDB replica set), GitHub Actions |
+| Tests + CI | **39 API tests** (Vitest + Supertest on a real MongoDB replica set) + **5 browser tests** (Playwright: live updates across 2 browsers, phone layout, keyboard-only, axe accessibility), all in GitHub Actions |
 | Seed | 10,000 users + 2,000 teams |
 | Load test | Board **p95 91–95 ms** with 100 concurrent users (target < 200 ms) |
 | UI | React, works on phones, keyboard-only accessible |

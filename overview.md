@@ -260,5 +260,16 @@ Why: Render's free tier gives only **0.1 CPU**, so CPU per request decides wheth
 - `oxlint` (very fast Rust linter, comes with the Vite template) on client AND server, `--deny-warnings`, runs in CI before tests/build.
 - Fixes it drove: unused catch variable; moved `tzLabel`/`TIMEZONES` to `client/src/lib/format.js` and the React context + `useApp` hook to `client/src/appContext.js` (files that export components should only export components — React Fast Refresh). The four "setState inside effect" spots are intentional (data fetch on id change, syncing with the socket) and are annotated with the reason.
 
+### Step 20 — Browser (end-to-end) tests with Playwright (`e2e/`)
+Real Chromium, real UI, real server + DB (run against the Docker stack so test users don't pollute the Atlas demo data). 5 tests:
+1. **Full flow:** register through the form → create team → generate invite code → a SECOND browser registers and joins with the code → the leader's page shows the new member **without reloading** (WebSockets) + activity log entry.
+2. **Join request:** requester clicks "Request to join" → leader gets a live toast → accepts → requester's page turns into a member view live.
+3. **Phone layout:** 375 px wide viewport, page has **no horizontal scroll**.
+4. **Keyboard only:** first Tab lands on "Skip to content", tabs switch with arrow keys, a team is created using only the keyboard.
+5. **Accessibility:** axe-core scan (WCAG 2 A/AA) of board and team pages → **0 serious/critical violations**.
+
+All 5 pass locally. CI has a new `e2e` job: `docker compose up` → wait for health → run Playwright → upload the report on failure.
+Fix it found: the invite-code element and its section were both labelled "Invite code" (ambiguous for screen readers too) → code element now "Current invite code".
+
 ### Decision — not merging Pawan's earlier hackathon-platform project
 Judging is about depth on concurrency/design, not breadth. Merging a second codebase 2 days before the deadline adds risk and interview surface without scoring. Instead its strongest idea (fully offline `docker compose up`) is reused as the official Docker Compose bonus, and the project is mentioned in the README/interview as background.
