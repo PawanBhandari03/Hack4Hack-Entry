@@ -240,5 +240,15 @@ Why: Render's free tier gives only **0.1 CPU**, so CPU per request decides wheth
 
 **Also learned:** endpoints that hit the DB every time (e.g. `/api/auth/me`) top out at ~100 req/s because **Atlas M0 is throttled to ~100 ops/s**. Paid tiers remove this; it's an infrastructure limit, not a code one.
 
+### Step 16 — Docker Compose (bonus) — `docker compose up --build`
+- `mongo` (Mongo 7 started as a **single-node replica set** — needed for transactions; the healthcheck runs `rs.initiate()` on first boot), `seed` (one-shot, only seeds an EMPTY DB: `SEED_IF_EMPTY=true`), `api` (waits for seed to finish), `web` (React built into static files, served by nginx with SPA fallback).
+- Tested: whole stack up, seeded 10k users in **1.6 s** (local DB), login works, deep links work, all 3 load-test runs PASS against it. Fully offline.
+- CI now has 3 jobs: server tests, client build, `docker compose build`.
+
+### Step 17 — Docs
+- `README.md` — what it is, highlights table (requirement → file → proof), how to run (Docker or dev), scripts, API reference, socket events, layout, honest "what's missing".
+- `docs/DESIGN.md` — the required **1-page design doc**: data model, how races are prevented, trade-offs table, what we'd do with one more week.
+- `docs/LOADTEST.md` — load-test report with all 5 runs **including the 2 failures and how each was diagnosed**, plus raw JSON in `docs/loadtest/`. Deployed (Render) run still to be added.
+
 ### Decision — not merging Pawan's earlier hackathon-platform project
 Judging is about depth on concurrency/design, not breadth. Merging a second codebase 2 days before the deadline adds risk and interview surface without scoring. Instead its strongest idea (fully offline `docker compose up`) is reused as the official Docker Compose bonus, and the project is mentioned in the README/interview as background.
