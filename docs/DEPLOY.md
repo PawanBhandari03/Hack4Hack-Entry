@@ -4,8 +4,13 @@ Total time: about 15 minutes. The order matters: deploy the API first, because t
 
 > **Why not Render's free tier for the API?** It gives 0.1 CPU. A simulation with exactly that limit (`docker-compose.render-sim.yml`) failed the load test: p95 about 1.4 s, with even `/health` capped near 100 req/s. See [LOADTEST.md](LOADTEST.md) §C. The API needs roughly 0.5–1 vCPU: **Railway** (shared vCPU, Singapore region, trial credit) or **Render Starter**.
 
-## 0. Atlas (done)
-- Cluster: AWS Mumbai (ap-south-1). Network Access includes `0.0.0.0/0`.
+## 0. Atlas
+- Current cluster: AWS Mumbai (ap-south-1). Network Access includes `0.0.0.0/0`.
+- **Recommended: put the database in the same region as the API.**
+  - A join makes about 10 sequential DB round-trips. Singapore ↔ Mumbai adds roughly 50–60 ms each, so about 0.5 s per join, versus 1–2 ms in the same region.
+  - Board reads are cached, so they aren't affected much.
+  - If the API goes to Railway or Render in **Singapore**, create a free M0 cluster in **AWS Singapore (ap-southeast-1)** under the same project, then run `npm run seed` against it (about 70 s).
+  - Alternatively, keep Mumbai and accept slower writes. Note it in the load-test report.
 - Connection string format: `mongodb+srv://<user>:<password>@cluster0.v6elg4f.mongodb.net/hack4hack?retryWrites=true&w=majority`
 
 ## 1a. API on Railway (recommended)
