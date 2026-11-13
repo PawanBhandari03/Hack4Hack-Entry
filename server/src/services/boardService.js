@@ -8,25 +8,60 @@
  *  - cursor pagination-> stable under live inserts, and never does an expensive skip()
  *  - 1 s micro-cache  -> 100 users hitting page 1 at once share one DB query. Live changes still
  *                        arrive instantly over WebSockets, so a 1 s stale first page is invisible.
+ *  - cached as a JSON STRING -> JSON.stringify runs once per second, not once per request
+ *                        (it was the top CPU cost after the JWT fix).
  */
 import mongoose from 'mongoose';
 import { Team, Participant } from '../models/index.js';
 import { teamSummary, personSummary, getHackathonOrThrow } from './teamService.js';
 import { badRequest } from '../lib/errors.js';
 
-const CACHE_TTL_MS = 1000;
-const cache = new Map(); // key -> { at, value }
+const FRESH_MS = 1000; // younger than this: serve as is
+const MAX_STALE_MS = 10_000; // between 1 s and 10 s: serve the old copy instantly AND refresh in background
+const cache = new Map(); // key -> { at, promise, value?, refreshing? }
 
+/**
+ * Micro-cache with stale-while-revalidate.
+ *
+ * Why not a plain 1 s TTL? Load testing showed that with steady traffic, every time the entry expired
+ * a whole burst of users waited for the same DB query (p95 236 ms with only 200 req/s). With SWR, an
+ * expired entry is still served instantly while ONE background query refreshes it — users never wait
+ * on the database except the very first request (or after 10 s of no traffic).
+ * Freshness is still ~1 s, and every change is pushed to clients over WebSockets anyway.
+ */
 function cached(key, fn) {
+  const now = Date.now();
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value;
-  const value = fn().catch((err) => {
-    cache.delete(key);
-    throw err;
-  });
-  cache.set(key, { at: Date.now(), value }); // cache the PROMISE: concurrent misses share one query
+  if (hit) {
+    const age = now - hit.at;
+    if (age < FRESH_MS) return hit.promise;
+    if (age < MAX_STALE_MS && 'value' in hit) {
+      if (!hit.refreshing) {
+        hit.refreshing = true;
+        fn()
+          .then((value) => cache.set(key, { at: Date.now(), promise: Promise.resolve(value), value }))
+          .catch(() => {
+            hit.refreshing = false; // keep serving the stale copy, try again next request
+          });
+      }
+      return Promise.resolve(hit.value);
+    }
+  }
+  // Cold (or too old): everyone asking right now shares ONE query (the promise is cached).
+  const entry = { at: now };
+  entry.promise = fn().then(
+    (value) => {
+      entry.value = value;
+      return value;
+    },
+    (err) => {
+      if (cache.get(key) === entry) cache.delete(key);
+      throw err;
+    }
+  );
+  cache.set(key, entry);
   if (cache.size > 500) cache.delete(cache.keys().next().value);
-  return value;
+  return entry.promise;
 }
 
 export function clearBoardCache() {
@@ -66,6 +101,7 @@ async function page(model, filter, projection, limit) {
 const TEAM_FIELDS = 'hackathonId name description skillsWanted leaderId memberCount openSeats minSize maxSize lookingForMembers updatedAt';
 const PERSON_FIELDS = 'hackathonId userId name skills timezone bio teamId role lookingForTeam joinedTeamAt updatedAt';
 
+/** Resolves to a JSON string (ready to send). */
 export async function listOpenTeams(hackathonId, { cursor, limit = 20, skill } = {}) {
   await getHackathonOrThrow(hackathonId);
   const key = `teams:${hackathonId}:${cursor ?? ''}:${limit}:${skill ?? ''}`;
@@ -74,10 +110,11 @@ export async function listOpenTeams(hackathonId, { cursor, limit = 20, skill } =
     if (skill) filter.skillsWanted = skill;
     filter = applyCursor(filter, cursor);
     const { items, nextCursor } = await page(Team, filter, TEAM_FIELDS, limit);
-    return { items: items.map(teamSummary), nextCursor };
+    return JSON.stringify({ items: items.map(teamSummary), nextCursor });
   });
 }
 
+/** Resolves to a JSON string (ready to send). */
 export async function listPeopleLooking(hackathonId, { cursor, limit = 20, skill } = {}) {
   await getHackathonOrThrow(hackathonId);
   const key = `people:${hackathonId}:${cursor ?? ''}:${limit}:${skill ?? ''}`;
@@ -86,6 +123,6 @@ export async function listPeopleLooking(hackathonId, { cursor, limit = 20, skill
     if (skill) filter.skills = skill;
     filter = applyCursor(filter, cursor);
     const { items, nextCursor } = await page(Participant, filter, PERSON_FIELDS, limit);
-    return { items: items.map(personSummary), nextCursor };
+    return JSON.stringify({ items: items.map(personSummary), nextCursor });
   });
 }

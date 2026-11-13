@@ -36,11 +36,11 @@ router.patch('/:hackathonId/me', hp, validate({ body: schemas.lookingForTeam }),
 });
 
 router.get('/:hackathonId/board/teams', hp, validate({ query: schemas.boardQuery }), async (req, res) => {
-  res.json(await board.listOpenTeams(req.params.hackathonId, req.validQuery));
+  res.type('json').send(await board.listOpenTeams(req.params.hackathonId, req.validQuery));
 });
 
 router.get('/:hackathonId/board/people', hp, validate({ query: schemas.boardQuery }), async (req, res) => {
-  res.json(await board.listPeopleLooking(req.params.hackathonId, req.validQuery));
+  res.type('json').send(await board.listPeopleLooking(req.params.hackathonId, req.validQuery));
 });
 
 router.get('/:hackathonId/suggestions', hp, async (req, res) => {

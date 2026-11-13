@@ -219,5 +219,26 @@ Prometheus format via `prom-client`:
 - Optional `METRICS_TOKEN` env var to protect the endpoint.
 - Test: after a 20-way race, `/metrics` shows `txn_retries_total > 0` and `TEAM_FULL` errors. Tests: **38**.
 
+### Step 15 — Performance round 2: profiling (important interview story)
+Why: Render's free tier gives only **0.1 CPU**, so CPU per request decides whether the deployed load test passes.
+
+1. **Profiled** the board endpoint with Node's built-in inspector (CPU profile during a load test).
+2. **Finding #1 — JWT was ~50% of CPU.** Given a plain-string secret, `jsonwebtoken` first tries `crypto.createPublicKey(secret)` (fails), then builds a secret key — **on every request**. Fix: build the key once with `crypto.createSecretKey()` at startup (`middleware/auth.js`). Also pinned `algorithms: ['HS256']` (security: a token can't choose its own algorithm).
+   → 743 → 1,340 req/s.
+3. **Finding #2 — `JSON.stringify` was the next top cost.** The board was cached as an object and re-serialised per request. Fix: cache the **JSON string** and `res.send()` it. → 1,340 → 2,134 req/s.
+4. **Added a "realistic" load-test run** (100 users each refreshing twice per second = 200 req/s), next to the two saturation runs (no think time). Surprise: **realistic FAILED (p95 236 ms)** while saturation passed.
+   **Why:** traffic arrives in bursts; whenever the 1 s cache had just expired, the whole burst waited for the same Atlas query.
+   **Fix: stale-while-revalidate** (`boardService.js` `cached()`): an entry 1–10 s old is served instantly while ONE background query refreshes it. Nobody waits for the DB except the first request after >10 s of silence.
+
+| Run (laptop → Atlas Mumbai) | Before | After |
+|---|---|---|
+| Realistic 100 users × 2 req/s | p95 236 ms ❌ | **p95 95 ms ✅** |
+| Saturation page 1 | 1,035 req/s, p95 146 ms | **2,711 req/s, p95 91 ms ✅** |
+| Saturation mix (p2, people, skill filter) | p95 158 ms | **p95 109 ms ✅** |
+
+**Interview Q: what's the staleness guarantee?** Board page data is at most ~1 s old under traffic (max 10 s right after an idle period, then refreshed). It's a *read view* only: joins/leaves never read the cache, they check `openSeats` inside the transaction, and live changes reach the UI over WebSockets immediately.
+
+**Also learned:** endpoints that hit the DB every time (e.g. `/api/auth/me`) top out at ~100 req/s because **Atlas M0 is throttled to ~100 ops/s**. Paid tiers remove this; it's an infrastructure limit, not a code one.
+
 ### Decision — not merging Pawan's earlier hackathon-platform project
 Judging is about depth on concurrency/design, not breadth. Merging a second codebase 2 days before the deadline adds risk and interview surface without scoring. Instead its strongest idea (fully offline `docker compose up`) is reused as the official Docker Compose bonus, and the project is mentioned in the README/interview as background.

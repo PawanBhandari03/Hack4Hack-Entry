@@ -3,6 +3,7 @@
  *
  *   npm run seed            -> wipes ALL collections in the target DB, then seeds
  *   USERS=2000 TEAMS=400 npm run seed   -> smaller run
+ *   SEED_IF_EMPTY=true npm run seed      -> only seeds an empty DB (used by docker compose)
  *
  * Fast because:
  *  - the bcrypt hash is computed ONCE and reused (hashing 10k passwords would take minutes)
@@ -50,6 +51,11 @@ async function insertBatched(model, docs) {
 async function main() {
   const t0 = Date.now();
   await mongoose.connect(config.mongoUri);
+  if (process.env.SEED_IF_EMPTY === 'true' && (await User.estimatedDocumentCount()) > 0) {
+    console.log('Database already has data, skipping seed (SEED_IF_EMPTY=true).');
+    await mongoose.disconnect();
+    return;
+  }
   console.log(`Connected. Wiping collections in "${mongoose.connection.name}"...`);
   for (const m of allModels) await m.deleteMany({});
   await syncAllIndexes();

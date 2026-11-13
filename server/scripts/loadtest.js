@@ -2,6 +2,11 @@
  * Load test for the "looking for teammates" board.
  * Requirement: p95 < 200 ms on the board endpoint with 100 concurrent users.
  *
+ * Three runs:
+ *   1. Realistic  - 100 users, each requesting the board twice per second (200 req/s total)
+ *   2. Saturation - 100 connections, zero think time, page 1 only (as fast as the server can go)
+ *   3. Saturation - mix of page 1, page 2 (cursor), people tab, skill filter
+ *
  *   TARGET=http://localhost:4000 node scripts/loadtest.js
  *   TARGET=https://<render-app>.onrender.com DURATION=60 node scripts/loadtest.js
  *
@@ -26,7 +31,7 @@ async function json(url, opts) {
 
 const percentile = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1)];
 
-async function run(name, requests) {
+async function run(name, requests, extra = {}) {
   const times = [];
   const statuses = {};
   const instance = autocannon({
@@ -34,6 +39,7 @@ async function run(name, requests) {
     connections: CONNECTIONS,
     duration: DURATION,
     requests,
+    ...extra,
   });
   instance.on('response', (_client, statusCode, _bytes, responseTime) => {
     times.push(responseTime);
@@ -46,6 +52,7 @@ async function run(name, requests) {
     target: TARGET,
     connections: CONNECTIONS,
     durationSec: DURATION,
+    ratePerConnection: extra.connectionRate ?? 'unlimited',
     requests: times.length,
     rps: Number(result.requests.average.toFixed(1)),
     statuses,
@@ -78,17 +85,24 @@ async function main() {
   for (let i = 0; i < 5; i++) await json(`${TARGET}/api/hackathons/${hackathonId}/board/teams`, { headers });
 
   const first = await json(`${TARGET}/api/hackathons/${hackathonId}/board/teams?limit=20`, { headers });
-  const boardTeams = await run('GET /board/teams (page 1)', [
+  // 1) Realistic: 100 users each refreshing the board twice a second (200 req/s total).
+  const realistic = await run(
+    'Realistic: 100 users x 2 req/s on /board/teams',
+    [{ method: 'GET', path: `/api/hackathons/${hackathonId}/board/teams?limit=20`, headers }],
+    { connectionRate: 2 }
+  );
+  // 2) Saturation: 100 connections firing back-to-back with zero think time (worst case).
+  const boardTeams = await run('Saturation: GET /board/teams (page 1), no think time', [
     { method: 'GET', path: `/api/hackathons/${hackathonId}/board/teams?limit=20`, headers },
   ]);
-  const boardMixed = await run('Board mix: teams p1/p2 + people + skill filter', [
+  const boardMixed = await run('Saturation: board mix (teams p1/p2 + people + skill filter)', [
     { method: 'GET', path: `/api/hackathons/${hackathonId}/board/teams?limit=20`, headers },
     { method: 'GET', path: `/api/hackathons/${hackathonId}/board/teams?limit=20&cursor=${first.nextCursor}`, headers },
     { method: 'GET', path: `/api/hackathons/${hackathonId}/board/people?limit=20`, headers },
     { method: 'GET', path: `/api/hackathons/${hackathonId}/board/teams?limit=20&skill=react`, headers },
   ]);
 
-  const report = { at: new Date().toISOString(), runs: [boardTeams, boardMixed] };
+  const report = { at: new Date().toISOString(), runs: [realistic, boardTeams, boardMixed] };
   const dir = path.resolve('loadtest-results');
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${report.at.replace(/[:.]/g, '-')}.json`);

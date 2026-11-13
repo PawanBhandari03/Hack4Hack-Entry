@@ -1,0 +1,63 @@
+# One command, fully offline:  docker compose up --build
+#   UI   -> http://localhost:8080   (demo1@hack4hack.dev / password123)
+#   API  -> http://localhost:4000   (/health, /metrics)
+services:
+  mongo:
+    image: mongo:7
+    # Transactions need a replica set, even a single-node one.
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      # Initiates the replica set on first start, then reports healthy once it has a primary.
+      test: >
+        mongosh --quiet --eval "try { rs.status().ok } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] }).ok }"
+      interval: 3s
+      timeout: 10s
+      retries: 30
+      start_period: 5s
+
+  seed:
+    build: ./server
+    command: ["node", "scripts/seed.js"]
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/hack4hack?replicaSet=rs0
+      JWT_SECRET: local-dev-only-secret
+      SEED_IF_EMPTY: "true"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build: ./server
+    ports:
+      - "4000:4000"
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/hack4hack?replicaSet=rs0
+      JWT_SECRET: local-dev-only-secret
+      PORT: "4000"
+      CLIENT_ORIGIN: http://localhost:8080,http://localhost:5173
+    depends_on:
+      mongo:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4000/health"]
+      interval: 5s
+      retries: 20
+
+  web:
+    build:
+      context: ./client
+      args:
+        VITE_API_URL: http://localhost:4000
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  mongo-data:
