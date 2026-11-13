@@ -9,6 +9,7 @@ export function notFoundHandler(_req, res) {
 export function errorHandler(err, _req, res, _next) {
   if (err instanceof HttpError) {
     apiErrors.inc({ code: err.code });
+    if (err.retryAfterSec) res.set('Retry-After', String(err.retryAfterSec));
     return res.status(err.status).json({ error: { code: err.code, message: err.message, details: err.details } });
   }
   if (err?.type === 'entity.parse.failed') {

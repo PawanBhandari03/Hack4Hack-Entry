@@ -35,7 +35,7 @@ Fifty people race for the last seat. All 50 transactions write the same `Team` d
 **Real-time:** services queue events, and `runTxn` publishes them **only after commit**. A rolled-back change is never broadcast. Clients refetch on reconnect.
 
 **Proof:**
-- 40 API tests + 5 browser tests in CI, including races of 50 users on 1 seat, 10 accepts at once, 1 user joining 5 teams, 10 simultaneous creates, and all members leaving at once.
+- 43 API tests + 5 browser tests in CI, including races of 50 users on 1 seat, 10 accepts at once, 1 user joining 5 teams, 10 simultaneous creates, and all members leaving at once.
 - A **chaos test** that SIGKILLs the server mid-burst (340 operations), restarts it, retries with the same keys, then runs an integrity checker (`npm run verify`). It found 0 violations.
 - `/metrics` exposes `txn_retries_total`, a live count of races that were resolved safely.
 

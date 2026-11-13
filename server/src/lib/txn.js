@@ -1,8 +1,16 @@
 import mongoose from 'mongoose';
 import { publish } from './realtime.js';
 import { txnAttempts, txnRetries } from './metrics.js';
+import { HttpError } from './errors.js';
 
-const MAX_TXN_TIME_MS = 15_000;
+const tryAgain = () => {
+  const e = new HttpError(503, 'TRY_AGAIN', 'The team is busy right now, please retry in a moment');
+  e.retryAfterSec = 2;
+  return e;
+};
+
+// Give up retrying after this long (configurable so tests don't wait 15 s).
+const maxTxnTimeMs = () => Number(process.env.TXN_MAX_RETRY_MS ?? 15_000);
 const TXN_OPTIONS = { readConcern: { level: 'snapshot' }, writeConcern: { w: 'majority' } };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -43,9 +51,15 @@ export async function runTxn(work) {
         break;
       } catch (err) {
         if (session.inTransaction()) await session.abortTransaction().catch(() => {});
-        if (hasLabel(err, 'TransientTransactionError') && Date.now() - started < MAX_TXN_TIME_MS) {
-          await sleep(backoff(attempt));
-          continue;
+        if (hasLabel(err, 'TransientTransactionError')) {
+          if (Date.now() - started < maxTxnTimeMs()) {
+            await sleep(backoff(attempt));
+            continue;
+          }
+          // Still conflicting after 15 s — e.g. a crashed server left a transaction open on this team
+          // (Atlas aborts orphans after transactionLifetimeLimitSeconds = 60 s). Nothing was written;
+          // tell the client to retry shortly instead of returning a generic 500.
+          throw tryAgain();
         }
         throw err;
       }
@@ -67,9 +81,14 @@ async function commitWithRetry(session, started) {
       await session.commitTransaction();
       return;
     } catch (err) {
-      if (hasLabel(err, 'UnknownTransactionCommitResult') && Date.now() - started < MAX_TXN_TIME_MS) {
-        await sleep(backoff(attempt));
-        continue;
+      if (hasLabel(err, 'UnknownTransactionCommitResult')) {
+        if (Date.now() - started < maxTxnTimeMs()) {
+          await sleep(backoff(attempt));
+          continue;
+        }
+        // We genuinely don't know if it committed. 503 + the client's SAME Idempotency-Key on retry is safe:
+        // if it did commit, the data model rejects a second join (ALREADY_IN_TEAM).
+        throw tryAgain();
       }
       throw err; // TransientTransactionError here bubbles up and re-runs the whole transaction
     }

@@ -207,7 +207,7 @@ Ran against Atlas (10k users + manual testing): **2,001 teams / 5,069 members ch
 
 **Interview Q: Why can't a crash corrupt anything?** Each join/leave is ONE transaction. A killed process never sends `commitTransaction`, so MongoDB throws away its half-done writes. The DB only ever holds complete "before" or "after" states.
 
-**Interesting detail (good to mention):** a transaction left open by a crashed process keeps its document "reserved" until MongoDB's `transactionLifetimeLimitSeconds` (60 s on Atlas) aborts it. New requests touching that same team just retry (`withTransaction` retries on write conflicts) and succeed once it's aborted — slower for up to a minute, but never wrong. In tests the limit is set to 5 s so the test is fast.
+**Interesting detail (good to mention):** a transaction left open by a crashed process keeps its document "reserved" until MongoDB's `transactionLifetimeLimitSeconds` (60 s on Atlas) aborts it. New requests touching that same team keep hitting write conflicts. Our retry loop (`lib/txn.js`) backs off and retries for up to 15 s; if the orphan is still there after that, the API answers **`503 TRY_AGAIN` with `Retry-After: 2`** (never a 500, and nothing was written), and the React client automatically retries with the **same Idempotency-Key** until the orphan is aborted. So: slower for up to a minute for that one team, never wrong. In the chaos test the limit is 5 s (instead of Atlas' 60 s) so the test runs fast — with 60 s the retries would simply take longer.
 
 **Retries after a crash:** the idempotency key of a killed request is stuck "in_progress". After the stale window (60 s in prod, 1 s in the test) a retry may re-run the action — and if the original had actually committed, the data model rejects the duplicate (`ALREADY_IN_TEAM`). That's why we have two layers.
 
@@ -288,6 +288,8 @@ Built `npm run race-demo` (`server/scripts/race-demo.js`): 50 real seeded users 
 
 **Result:** retries **1,010 → 49** (each loser retries exactly once); 23.5 s → ~9 s on Atlas M0. The remaining time is purely M0's ops/s cap (≈18 DB ops per join × 50); on an unthrottled MongoDB the same 50-way race finishes well under 1 s (the whole test incl. creating 52 users takes 1.2 s).
 Also fixed: metric route labels lost their prefix on error responses (`/redeem` instead of `/api/invites/redeem`) — Express resets `req.baseUrl` before the error handler, so each router now stores it in `res.locals` first. Test added.
+
+**Follow-up fix:** the retry loop gives up after 15 s with a clean **503 `TRY_AGAIN` + `Retry-After`** (instead of a 500); the client retries automatically with the same Idempotency-Key. 3 unit tests for the loop (`tests/txn.test.js`): retries then succeeds, gives up with 503, never retries business errors like TEAM_FULL. **43 tests.**
 
 **Interview Q: "What's the downside of optimistic concurrency?"** → Retry storms under contention. Show this story: measured it, explained it, fixed it with backoff + jitter + ordering, and proved it with the metric.
 

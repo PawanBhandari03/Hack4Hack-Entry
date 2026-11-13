@@ -69,6 +69,12 @@ export async function api(path, { method = 'GET', body, retries = 2 } = {}) {
         continue;
       }
     }
+    // Server says "busy, try again" (e.g. a crashed transaction still holds the team): honour Retry-After.
+    if (res.status === 503 && attempt < retries + 3) {
+      const secs = Number(res.headers.get('Retry-After')) || 2;
+      await wait(secs * 1000);
+      continue;
+    }
     const data = res.status === 204 ? null : await res.json().catch(() => null);
     if (!res.ok) {
       const e = data?.error ?? {};
@@ -95,6 +101,7 @@ export function errorText(err) {
     ALREADY_DECIDED: 'Someone already handled this request.',
     TEAM_NOT_FOUND: 'This team no longer exists.',
     TEAM_FORMATION_CLOSED: 'Team formation for this hackathon has closed.',
+    TRY_AGAIN: 'That team is busy right now. Please try again in a moment.',
   };
   if (err?.code === 'VALIDATION_ERROR' && err.details?.length) {
     return err.details.map((d) => `${d.path.split('.').slice(1).join('.')}: ${d.message}`).join(' · ');

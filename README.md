@@ -19,9 +19,9 @@ People create teams, invite others with expiring codes, request to join (the lea
 | Security | JWT (HS256 pinned), bcrypt, leader-only actions, 50-bit hashed invite codes, rate limits, zod validation everywhere |
 | Audit log | who / what / when, written in the same transaction |
 | Teammate suggestions | `0.7 × missing-skill coverage + 0.3 × timezone closeness`, with a per-result breakdown |
-| Tests + CI | **40 API tests** (Vitest + Supertest on a real MongoDB replica set) + **5 browser tests** (Playwright: live updates across 2 browsers, phone layout, keyboard-only, axe accessibility), all in GitHub Actions |
+| Tests + CI | **43 API tests** (Vitest + Supertest on a real MongoDB replica set) + **5 browser tests** (Playwright: live updates across 2 browsers, phone layout, keyboard-only, axe accessibility), all in GitHub Actions |
 | Seed | 10,000 users + 2,000 teams |
-| Load test | Board **p95 91–95 ms** with 100 concurrent users (target < 200 ms) |
+| Load test | Board **p95 91–95 ms** with 100 concurrent users (target < 200 ms), measured locally against Atlas; deployed run in [LOADTEST.md](docs/LOADTEST.md) §C |
 | UI | React, works on phones, keyboard-only accessible |
 | **Bonus** | Optimistic UI with rollback · `docker compose up` (fully offline) · Prometheus `/metrics` · **chaos test** (SIGKILL mid-join → 0 integrity violations) |
 
@@ -56,7 +56,7 @@ npm run dev                 # http://localhost:5173 (uses VITE_API_URL, default 
 
 | Command | What it does |
 |---|---|
-| `npm test` | 40 API tests, including race, real-time, metrics and chaos tests (in-memory MongoDB replica set; no setup needed) |
+| `npm test` | 43 API tests, including race, real-time, metrics and chaos tests (in-memory MongoDB replica set; no setup needed) |
 | `npm run seed` | Wipe and seed 10,000 users / 2,000 teams |
 | `npm run loadtest` | Realistic and saturation load tests, exact p95 (`TARGET=…` to point elsewhere) |
 | `npm run verify` | Check every invariant (member counts, seats, one leader, no orphans) against the DB |
