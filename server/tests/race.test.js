@@ -121,6 +121,7 @@ describe('metrics', () => {
     const retries = Number(res.text.match(/^txn_retries_total (\d+)/m)?.[1]);
     expect(retries).toBeGreaterThan(0); // write conflicts happened and were retried safely
     expect(res.text).toMatch(/api_errors_total\{code="TEAM_FULL"\} \d+/);
-    expect(res.text).toContain('route="/api/invites/redeem"');
+    expect(res.text).toContain('route="/api/invites/redeem",status="200"');
+    expect(res.text).toContain('route="/api/invites/redeem",status="409"'); // label kept on errors too
   });
 });

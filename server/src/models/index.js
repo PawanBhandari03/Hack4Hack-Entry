@@ -84,6 +84,7 @@ const teamSchema = new Schema(
     minSize: { type: Number, required: true },
     maxSize: { type: Number, required: true },
     lookingForMembers: { type: Boolean, default: true },
+    inviteEpoch: { type: Number, default: 0 }, // bumped on invite create/revoke -> serialises revoke vs join
   },
   { timestamps: true }
 );
@@ -103,7 +104,6 @@ const inviteSchema = new Schema(
     createdBy: { type: ObjectId, ref: 'User', required: true },
     expiresAt: { type: Date, required: true },
     revokedAt: { type: Date, default: null },
-    uses: { type: Number, default: 0 }, // incremented in the join transaction -> conflicts with a concurrent revoke
   },
   { timestamps: true }
 );

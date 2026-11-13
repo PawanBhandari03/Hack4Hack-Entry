@@ -6,8 +6,10 @@ import { requireAuth, signToken } from '../middleware/auth.js';
 import { authLimiter } from '../middleware/rateLimit.js';
 import { conflict, unauthorized, notFound, isDuplicateKey } from '../lib/errors.js';
 import { utcOffsetMinutes } from '../lib/timezone.js';
+import { tagRouteBase } from '../lib/metrics.js';
 
 const router = Router();
+router.use(tagRouteBase);
 
 const publicUser = (u) => ({
   id: String(u._id),

@@ -150,6 +150,9 @@ export function assertFormationOpen(hackathon, now = new Date()) {
  */
 export async function ensureParticipant(hackathonId, userId) {
   await getHackathonOrThrow(hackathonId);
+  // Common case: already registered -> 1 cheap indexed read instead of user lookup + upsert.
+  const existing = await Participant.findOne({ hackathonId: oid(hackathonId), userId }).lean();
+  if (existing) return existing;
   const user = await User.findById(userId).lean();
   if (!user) throw notFound('USER_NOT_FOUND', 'User not found');
   const filter = { hackathonId: oid(hackathonId), userId: user._id };
@@ -191,7 +194,21 @@ async function addMemberInTxn(session, events, { team, userId, actorId, via }) {
     throw conflict('ALREADY_IN_TEAM', 'You are already in a team for this hackathon');
   }
 
+  await cancelPendingRequestsOfUser(session, events, team.hackathonId, userId);
+  // `team` was read inside this transaction's snapshot; if the seat update below succeeds, nobody changed
+  // the team in between (otherwise: WriteConflict + retry), so memberCount + 1 is exact.
+  await audit(session, {
+    hackathonId: team.hackathonId,
+    teamId: team._id,
+    actorId,
+    action: 'MEMBER_JOINED',
+    targetUserId: userId,
+    details: { via, memberCount: team.memberCount + 1 },
+  });
+
   // THE race-proof line: only succeeds if a seat is still open at commit time.
+  // Done LAST on purpose: the Team document is the contended "hot" document, so the winner holds it for
+  // the shortest possible time before committing, and the losers spend less time conflicting.
   const updated = await Team.findOneAndUpdate(
     { _id: team._id, openSeats: { $gt: 0 } },
     { $inc: { openSeats: -1, memberCount: 1 } },
@@ -202,16 +219,6 @@ async function addMemberInTxn(session, events, { team, userId, actorId, via }) {
     if (!exists) throw notFound('TEAM_NOT_FOUND', 'This team no longer exists');
     throw conflict('TEAM_FULL', 'This team is already full');
   }
-
-  await cancelPendingRequestsOfUser(session, events, team.hackathonId, userId);
-  await audit(session, {
-    hackathonId: team.hackathonId,
-    teamId: team._id,
-    actorId,
-    action: 'MEMBER_JOINED',
-    targetUserId: userId,
-    details: { via, memberCount: updated.memberCount },
-  });
   teamChangedEvents(events, updated);
   personChangedEvents(events, participant);
   return { team: updated, participant };
@@ -438,6 +445,15 @@ export async function transferLeadership(actorId, teamId, newLeaderId) {
 
 /* ------------------------------ invite codes ----------------------------- */
 
+/**
+ * Invite revocation is serialised against joins through the TEAM document: createInvite/revokeInvites
+ * bump team.inviteEpoch, and every join writes the same Team document (the seat update). So a revoke and
+ * a join can't both commit against the same snapshot — the later one hits a WriteConflict, retries, and
+ * (for a join) re-reads the invite, sees it revoked, and fails. We used to $inc a counter on the Invite
+ * itself, but that made the invite a second hot document every racer had to fight over.
+ */
+const bumpInviteEpoch = (session, teamId) => Team.updateOne({ _id: teamId }, { $inc: { inviteEpoch: 1 } }, { session });
+
 /** Leader generates a fresh code; all previous codes for the team are revoked. */
 export async function createInvite(actorId, teamId) {
   return runTxn(async (session) => {
@@ -450,6 +466,7 @@ export async function createInvite(actorId, teamId) {
       [{ hackathonId: team.hackathonId, teamId: team._id, codeHash: hashInviteCode(code), createdBy: actorId, expiresAt }],
       { session }
     );
+    await bumpInviteEpoch(session, team._id);
     await audit(session, {
       hackathonId: team.hackathonId,
       teamId: team._id,
@@ -465,6 +482,7 @@ export async function revokeInvites(actorId, teamId) {
   return runTxn(async (session) => {
     const team = await loadTeamAsLeader(session, teamId, actorId);
     const res = await Invite.updateMany({ teamId: team._id, revokedAt: null }, { $set: { revokedAt: new Date() } }, { session });
+    await bumpInviteEpoch(session, team._id);
     await audit(session, { hackathonId: team.hackathonId, teamId: team._id, actorId, action: 'INVITES_REVOKED' });
     return { revoked: res.modifiedCount };
   });
@@ -477,15 +495,17 @@ export async function redeemInvite(userId, code) {
   if (!invite || invite.revokedAt) throw notFound('INVALID_INVITE', 'Invalid invite code');
   if (invite.expiresAt <= new Date()) throw gone('INVITE_EXPIRED', 'This invite code has expired');
 
+  // Fast path (no transaction): once the last seat is gone, everyone else is told immediately instead of
+  // starting a transaction that is certain to fail. This is only an optimisation — the authoritative
+  // check is the conditional seat update inside the transaction.
+  const snapshot = await Team.findById(invite.teamId).select('openSeats').lean();
+  if (!snapshot) throw notFound('TEAM_NOT_FOUND', 'This team no longer exists');
+  if (snapshot.openSeats <= 0) throw conflict('TEAM_FULL', 'This team is already full');
+
   await ensureParticipant(invite.hackathonId, userId);
   return runTxn(async (session, events) => {
-    // Re-check validity INSIDE the transaction and touch the invite doc, so a concurrent
-    // revoke/regenerate (which also writes this doc) causes a write conflict instead of a stale join.
-    const live = await Invite.findOneAndUpdate(
-      { _id: invite._id, revokedAt: null, expiresAt: { $gt: new Date() } },
-      { $inc: { uses: 1 } },
-      { returnDocument: 'after', session }
-    );
+    // Re-check the invite INSIDE the transaction (see bumpInviteEpoch for why this is race-free).
+    const live = await Invite.findOne({ _id: invite._id, revokedAt: null, expiresAt: { $gt: new Date() } }).session(session).lean();
     if (!live) throw notFound('INVALID_INVITE', 'Invalid invite code');
     const team = await Team.findById(invite.teamId).session(session);
     if (!team) throw notFound('TEAM_NOT_FOUND', 'This team no longer exists');

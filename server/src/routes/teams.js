@@ -4,10 +4,11 @@ import { validate, schemas } from '../middleware/validate.js';
 import { idempotency } from '../middleware/idempotency.js';
 import { inviteLimiter, joinRequestLimiter } from '../middleware/rateLimit.js';
 import * as teams from '../services/teamService.js';
+import { tagRouteBase } from '../lib/metrics.js';
 
 /* ------------------------------- /api/teams ------------------------------- */
 export const teamsRouter = Router();
-teamsRouter.use(requireAuth);
+teamsRouter.use(tagRouteBase, requireAuth);
 const tp = validate({ params: schemas.teamParams });
 
 teamsRouter.get('/:teamId', tp, async (req, res) => {
@@ -49,7 +50,7 @@ teamsRouter.post('/:teamId/requests', tp, joinRequestLimiter, idempotency(), val
 
 /* ------------------------------ /api/invites ------------------------------ */
 export const invitesRouter = Router();
-invitesRouter.use(requireAuth);
+invitesRouter.use(tagRouteBase, requireAuth);
 
 invitesRouter.post('/redeem', inviteLimiter, idempotency(), validate({ body: schemas.redeemInvite }), async (req, res) => {
   res.json({ team: await teams.redeemInvite(req.userId, req.body.code) });
@@ -57,7 +58,7 @@ invitesRouter.post('/redeem', inviteLimiter, idempotency(), validate({ body: sch
 
 /* ------------------------------ /api/requests ----------------------------- */
 export const requestsRouter = Router();
-requestsRouter.use(requireAuth);
+requestsRouter.use(tagRouteBase, requireAuth);
 const rp = validate({ params: schemas.requestParams });
 
 requestsRouter.post('/:requestId/accept', rp, idempotency(), async (req, res) => {

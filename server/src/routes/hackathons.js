@@ -7,8 +7,10 @@ import { createTeamLimiter } from '../middleware/rateLimit.js';
 import * as teams from '../services/teamService.js';
 import * as board from '../services/boardService.js';
 import { getSuggestions } from '../services/suggestionService.js';
+import { tagRouteBase } from '../lib/metrics.js';
 
 const router = Router();
+router.use(tagRouteBase);
 const hp = validate({ params: schemas.hackathonParams });
 
 router.get('/', async (_req, res) => {

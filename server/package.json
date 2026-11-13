@@ -10,7 +10,8 @@
     "seed": "node scripts/seed.js",
     "loadtest": "node scripts/loadtest.js",
     "verify": "node scripts/verify-integrity.js",
-    "lint": "oxlint --deny-warnings src scripts tests"
+    "lint": "oxlint --deny-warnings src scripts tests",
+    "race-demo": "node scripts/race-demo.js"
   },
   "keywords": [],
   "author": "",

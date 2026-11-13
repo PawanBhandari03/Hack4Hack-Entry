@@ -274,6 +274,23 @@ Fix it found: the invite-code element and its section were both labelled "Invite
 ### Decision — not merging Pawan's earlier hackathon-platform project
 Judging is about depth on concurrency/design, not breadth. Merging a second codebase 2 days before the deadline adds risk and interview surface without scoring. Instead its strongest idea (fully offline `docker compose up`) is reused as the official Docker Compose bonus, and the project is mentioned in the README/interview as background.
 
+### Step 22 — Retry storm found & fixed (great interview story)
+Built `npm run race-demo` (`server/scripts/race-demo.js`): 50 real seeded users hit the LAST seat of a team **over HTTP against any deployment** (for the video). First run against Atlas: correct (1 × 200, 49 × TEAM_FULL, integrity OK) **but took 23.5 s**. `/metrics` showed why: **`txn_retries_total = 1,010`** for 50 requests.
+
+**Cause:** the driver's `withTransaction()` retries a WriteConflict *immediately*. The 49 losers spun in a tight loop against the same Team document while the winner was still committing — and on Atlas M0 (≈100 ops/s throttle) that storm also slowed the winner down.
+
+**Fixes:**
+1. **Own transaction loop with exponential backoff + jitter** (`lib/txn.js`): on `TransientTransactionError`, abort, wait a random 0..min(100, 4·2ⁿ) ms, re-run on fresh data; on `UnknownTransactionCommitResult` retry only the commit. Max 15 s.
+2. **Touch the hot document last:** in `addMemberInTxn` the seat update is now the final write before commit, so the winner holds the contended Team doc for the shortest time.
+3. **Invite is no longer a second hot doc:** joins used to `$inc` a counter on the Invite to serialise against revokes. Now create/revoke bump `team.inviteEpoch` instead — joins already write the Team doc, so revoke-vs-join is still serialised, without a second contended document.
+4. **Fast path:** `redeemInvite` checks `openSeats` before starting a transaction; once a team is full, later requests get TEAM_FULL instantly.
+5. `ensureParticipant` reads first (1 op) instead of user lookup + upsert (2 ops) for already-registered users.
+
+**Result:** retries **1,010 → 49** (each loser retries exactly once); 23.5 s → ~9 s on Atlas M0. The remaining time is purely M0's ops/s cap (≈18 DB ops per join × 50); on an unthrottled MongoDB the same 50-way race finishes well under 1 s (the whole test incl. creating 52 users takes 1.2 s).
+Also fixed: metric route labels lost their prefix on error responses (`/redeem` instead of `/api/invites/redeem`) — Express resets `req.baseUrl` before the error handler, so each router now stores it in `res.locals` first. Test added.
+
+**Interview Q: "What's the downside of optimistic concurrency?"** → Retry storms under contention. Show this story: measured it, explained it, fixed it with backoff + jitter + ordering, and proved it with the metric.
+
 ### Step 21 — Deploy guide
 `docs/DEPLOY.md`: Render (API, Singapore) → Vercel (client, `VITE_API_URL`) → set `CLIENT_ORIGIN` → verify + deployed load test. Waiting on Pawan's Render/Vercel accounts.
 

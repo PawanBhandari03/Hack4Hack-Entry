@@ -43,7 +43,7 @@ Fifty people race for the last seat. All 50 transactions write the same `Team` d
 
 | Choice | Why | Cost |
 |---|---|---|
-| Optimistic concurrency (transactions + conditions), **not locks** | No Redis or lock service, no stuck locks after a crash, and it works with any number of API instances | Hot teams cause retries. These are bounded, and visible in `/metrics`. |
+| Optimistic concurrency (transactions + conditions), **not locks** | No Redis or lock service, no stuck locks after a crash, and it works with any number of API instances | Hot teams cause retries. The driver's immediate retries turned a 50-way race into **1,010 retries**. Our own loop with **jittered exponential backoff**, the hot document written last, and a full-team fast path cut that to **49** (one per loser). Visible in `/metrics`. |
 | Denormalized `openSeats` and Participant copies | One atomic check; the board needs no joins | Profile edits must update the copies (one `updateMany`) |
 | Invite code joins instantly; join request needs the leader | Codes are the leader's pre-approval | A leaked code lets anyone in until it's revoked (48 h expiry, one-click regenerate) |
 | Codes: 50-bit random, stored hashed, 10 attempts per 15 min per user | Brute force becomes hopeless; a DB leak doesn't expose codes | The leader sees a code only once (regenerate to see a new one) |

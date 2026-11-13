@@ -55,7 +55,9 @@ export const socketConnections = new client.Gauge({
 export function metricsMiddleware(req, res, next) {
   const end = httpDuration.startTimer();
   res.on('finish', () => {
-    const route = req.route ? `${req.baseUrl}${req.route.path}` : req.path === '/health' ? '/health' : 'unmatched';
+    // res.locals.routeBase survives error handling (Express resets req.baseUrl on the way to the error handler).
+    const base = res.locals.routeBase ?? req.baseUrl;
+    const route = req.route ? `${base}${req.route.path}` : req.path === '/health' ? '/health' : 'unmatched';
     end({ method: req.method, route, status: res.statusCode });
   });
   next();
@@ -66,4 +68,10 @@ export async function metricsHandler(req, res) {
   if (token && req.get('authorization') !== `Bearer ${token}`) return res.status(401).end();
   res.set('Content-Type', registry.contentType);
   res.end(await registry.metrics());
+}
+
+/** Put first in every Router so the metrics label keeps the mount path (e.g. /api/teams) even on errors. */
+export function tagRouteBase(req, res, next) {
+  res.locals.routeBase = req.baseUrl;
+  next();
 }
