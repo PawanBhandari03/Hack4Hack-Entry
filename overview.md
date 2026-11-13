@@ -211,5 +211,13 @@ Ran against Atlas (10k users + manual testing): **2,001 teams / 5,069 members ch
 
 **Retries after a crash:** the idempotency key of a killed request is stuck "in_progress". After the stale window (60 s in prod, 1 s in the test) a retry may re-run the action — and if the original had actually committed, the data model rejects the duplicate (`ALREADY_IN_TEAM`). That's why we have two layers.
 
+### Step 14 — Metrics (bonus) (`server/src/lib/metrics.js`, `GET /metrics`)
+Prometheus format via `prom-client`:
+- `http_request_duration_seconds{method,route,status}` — histogram → p95 per endpoint in production, not just in the load test. Labelled by **route pattern** (`/api/teams/:teamId`), not raw URL, so the number of series stays small.
+- `txn_retries_total` — incremented every time `withTransaction` re-runs our code because of a **write conflict**. This is a **live counter of races that happened and were resolved safely**. (Great demo: run the race, watch it go up.)
+- `txn_attempts_total{outcome=committed|aborted}`, `api_errors_total{code}` (e.g. how many `TEAM_FULL`), `socket_connections`, plus Node process metrics (memory, event-loop lag, GC).
+- Optional `METRICS_TOKEN` env var to protect the endpoint.
+- Test: after a 20-way race, `/metrics` shows `txn_retries_total > 0` and `TEAM_FULL` errors. Tests: **38**.
+
 ### Decision — not merging Pawan's earlier hackathon-platform project
 Judging is about depth on concurrency/design, not breadth. Merging a second codebase 2 days before the deadline adds risk and interview surface without scoring. Instead its strongest idea (fully offline `docker compose up`) is reused as the official Docker Compose bonus, and the project is mentioned in the README/interview as background.

@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { publish } from './realtime.js';
+import { txnAttempts, txnRetries } from './metrics.js';
 
 /**
  * Run `work(session, events)` inside a MongoDB transaction.
@@ -14,14 +15,20 @@ export async function runTxn(work) {
   const session = await mongoose.startSession();
   let events = [];
   let result;
+  let attempts = 0;
   try {
     await session.withTransaction(
       async () => {
+        if (++attempts > 1) txnRetries.inc(); // a concurrent writer beat us: retrying with fresh data
         events = [];
         result = await work(session, events);
       },
       { readConcern: { level: 'snapshot' }, writeConcern: { w: 'majority' } }
     );
+    txnAttempts.inc({ outcome: 'committed' });
+  } catch (err) {
+    txnAttempts.inc({ outcome: 'aborted' });
+    throw err;
   } finally {
     await session.endSession();
   }

@@ -16,6 +16,7 @@ import { config } from './config.js';
 import { verifyToken } from './middleware/auth.js';
 import { rooms, setIo } from './lib/realtime.js';
 import { Participant, Team } from './models/index.js';
+import { socketConnections } from './lib/metrics.js';
 
 export function attachSocket(httpServer) {
   const io = new Server(httpServer, { cors: { origin: config.clientOrigins } });
@@ -32,6 +33,8 @@ export function attachSocket(httpServer) {
   io.on('connection', (socket) => {
     const userId = socket.data.userId;
     socket.join(rooms.user(userId));
+    socketConnections.inc();
+    socket.on('disconnect', () => socketConnections.dec());
 
     socket.on('board:subscribe', (hackathonId, ack) => {
       if (!mongoose.isValidObjectId(hackathonId)) return ack?.({ ok: false });

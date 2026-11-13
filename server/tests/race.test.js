@@ -109,3 +109,18 @@ describe('race: leaving', () => {
     expect(await AuditLog.countDocuments({ teamId: team.id, action: 'TEAM_DELETED' })).toBe(1);
   });
 });
+
+describe('metrics', () => {
+  it('/metrics exposes transaction retries caused by races, error codes and latency per route', async () => {
+    const { code } = await teamWithOneSeatLeft();
+    const racers = await makeUsers(20);
+    await Promise.all(racers.map((u) => joinWithCode(u, code)));
+
+    const res = await api().get('/metrics');
+    expect(res.status).toBe(200);
+    const retries = Number(res.text.match(/^txn_retries_total (\d+)/m)?.[1]);
+    expect(retries).toBeGreaterThan(0); // write conflicts happened and were retried safely
+    expect(res.text).toMatch(/api_errors_total\{code="TEAM_FULL"\} \d+/);
+    expect(res.text).toContain('route="/api/invites/redeem"');
+  });
+});
