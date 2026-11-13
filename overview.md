@@ -168,3 +168,15 @@ Client sends `Idempotency-Key: <uuid>` (one per user action, reused on retries).
 - Fixes: (1) cache hackathon settings for 30 s; (2) board responses micro-cached for 1 s **and the promise itself is cached**, so 100 simultaneous requests share ONE DB query.
 - **Second run PASSED: p95 = 146 ms at 1,035 req/s** (page 1); p95 = 158 ms for a mix of page 2 / people / skill filter. 0 errors. (Load generator and server on the same laptop, DB on Atlas.)
 - **Interview Q: Isn't a cache "cheating" on freshness?** The 1 s cache only affects the first page load; every change is pushed instantly over WebSockets, and writes never read from the cache — all correctness checks happen inside the DB transaction.
+- CI on GitHub (Linux) passed: 36/36.
+
+### Step 10 — React frontend (`client/`)
+Vite + React 19 + React Router + socket.io-client. No UI library — plain CSS with design tokens (light + dark mode).
+- **Pages:** Login / Register (skills + timezone, demo-account buttons), **Board** (my status, create team, join with code, suggestions, live Teams / People tabs with skill filter + Load more), **Team page** (members, leader controls, join requests, invite code, activity log), **Profile**.
+- **`src/api.js`** — fetch wrapper. Every POST/PATCH/DELETE gets ONE `Idempotency-Key` per user action and **reuses it for automatic retries** (network error, or `REQUEST_IN_PROGRESS`). This is the client half of idempotency.
+- **`src/state.jsx`** — one Socket.io connection per login; private notifications (request accepted/declined, someone asked to join) become toasts; on reconnect everything is refetched.
+- **Live board (`useLiveBoard` in `Board.jsx`):** first page via REST, then WebSocket events upsert/remove cards; changed cards flash briefly. A team that fills its last seat disappears from everyone's board instantly.
+- **Optimistic UI (bonus):** "Request to join" flips to "Requested ✓" immediately and **rolls back** if the server says no (e.g. TEAM_FULL).
+- **Mobile:** fluid grid (`auto-fill, minmax(280px, 1fr)`), 44 px touch targets, stacked layout under 600 px.
+- **Keyboard-only:** skip link, real `<button>`/`<a>`/`<label>` everywhere, visible focus ring, tabs follow the ARIA tabs pattern (arrow keys), `aria-live` toasts, `role="alert"` errors, confirmation before destructive actions.
+- Production build: 104 kB gzipped JS.
