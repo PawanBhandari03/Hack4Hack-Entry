@@ -8,7 +8,12 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server';
 let replSet;
 
 export async function setup({ provide }) {
-  replSet = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
+  replSet = await MongoMemoryReplSet.create({
+    replSet: { count: 1, storageEngine: 'wiredTiger' },
+    // A crashed client leaves its open transaction behind until this limit (Atlas default: 60 s).
+    // Shortened so the chaos test doesn't wait a full minute.
+    instanceOpts: [{ args: ['--setParameter', 'transactionLifetimeLimitSeconds=5'] }],
+  });
   provide('mongoUri', replSet.getUri());
 }
 

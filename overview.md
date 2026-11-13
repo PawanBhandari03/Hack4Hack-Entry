@@ -180,3 +180,36 @@ Vite + React 19 + React Router + socket.io-client. No UI library — plain CSS w
 - **Mobile:** fluid grid (`auto-fill, minmax(280px, 1fr)`), 44 px touch targets, stacked layout under 600 px.
 - **Keyboard-only:** skip link, real `<button>`/`<a>`/`<label>` everywhere, visible focus ring, tabs follow the ARIA tabs pattern (arrow keys), `aria-live` toasts, `role="alert"` errors, confirmation before destructive actions.
 - Production build: 104 kB gzipped JS.
+- Pawan tested demo1 + demo2 in two browsers: live updates work without refresh.
+- Fix after review: the hackathon room subscription moved to app level (`state.jsx`), so people viewing a team page they're NOT a member of also get live seat counts / deletion notices (previously only on the Board).
+- `client/vercel.json` rewrites every path to `index.html`, so refreshing `/teams/:id` on Vercel doesn't 404.
+
+### Step 11 — Deploy config
+- `render.yaml` (Render Blueprint): API in **Singapore** — the closest Render region to the Atlas cluster in **AWS Mumbai (ap-south-1)**. Fewer km between server and DB = lower latency on every query.
+- Atlas Network Access: `0.0.0.0/0` added (Render's free tier has no fixed outgoing IP). Security still comes from the DB username/password + TLS.
+
+### Step 12 — Integrity checker (`server/src/lib/integrity.js`, `npm run verify`)
+Scans the DB and lists any broken invariant:
+1. `team.memberCount` = number of Participants in that team
+2. `openSeats = maxSize − memberCount`, and `1 ≤ memberCount ≤ maxSize`
+3. exactly one leader per team, and it equals `team.leaderId`
+4. no Participant points at a deleted team
+5. nobody registered twice in one hackathon
+
+Ran against Atlas (10k users + manual testing): **2,001 teams / 5,069 members checked in 0.9 s → OK**.
+
+### Step 13 — Chaos test (bonus) (`server/tests/chaos.test.js`)
+1. Start the real server as a separate process.
+2. Fire **340 requests at once** (300 joins for only 120 free seats + 40 leaders leaving → leader transfers and team deletions racing with joins).
+3. After 40 responses, **kill the server with SIGKILL** (no clean shutdown).
+4. Restart it, retry only the requests that got no answer, **with the same Idempotency-Key**.
+5. Assert: integrity check = 0 violations, and everyone who was told "joined" really is in that team.
+
+**Interview Q: Why can't a crash corrupt anything?** Each join/leave is ONE transaction. A killed process never sends `commitTransaction`, so MongoDB throws away its half-done writes. The DB only ever holds complete "before" or "after" states.
+
+**Interesting detail (good to mention):** a transaction left open by a crashed process keeps its document "reserved" until MongoDB's `transactionLifetimeLimitSeconds` (60 s on Atlas) aborts it. New requests touching that same team just retry (`withTransaction` retries on write conflicts) and succeed once it's aborted — slower for up to a minute, but never wrong. In tests the limit is set to 5 s so the test is fast.
+
+**Retries after a crash:** the idempotency key of a killed request is stuck "in_progress". After the stale window (60 s in prod, 1 s in the test) a retry may re-run the action — and if the original had actually committed, the data model rejects the duplicate (`ALREADY_IN_TEAM`). That's why we have two layers.
+
+### Decision — not merging Pawan's earlier hackathon-platform project
+Judging is about depth on concurrency/design, not breadth. Merging a second codebase 2 days before the deadline adds risk and interview surface without scoring. Instead its strongest idea (fully offline `docker compose up`) is reused as the official Docker Compose bonus, and the project is mentioned in the README/interview as background.

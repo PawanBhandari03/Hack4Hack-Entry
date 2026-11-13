@@ -17,7 +17,7 @@
 import { IdempotencyKey } from '../models/index.js';
 import { badRequest, conflict, isDuplicateKey } from '../lib/errors.js';
 
-const STALE_MS = 60_000;
+const STALE_MS = Number(process.env.IDEMPOTENCY_STALE_MS ?? 60_000);
 const KEY_RE = /^[A-Za-z0-9_\-:.]{8,100}$/;
 
 export function idempotency({ required = false } = {}) {

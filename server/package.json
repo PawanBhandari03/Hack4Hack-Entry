@@ -8,7 +8,8 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "seed": "node scripts/seed.js",
-    "loadtest": "node scripts/loadtest.js"
+    "loadtest": "node scripts/loadtest.js",
+    "verify": "node scripts/verify-integrity.js"
   },
   "keywords": [],
   "author": "",
@@ -33,5 +34,8 @@
     "socket.io-client": "^4.8.4",
     "supertest": "^7.3.2",
     "vitest": "^5.1.0"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

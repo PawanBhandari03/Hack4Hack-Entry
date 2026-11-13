@@ -1,0 +1,22 @@
+# Render Blueprint: New > Blueprint > pick this repo. Secrets are entered in the dashboard (sync: false).
+services:
+  - type: web
+    name: hack4hack-teams-api
+    runtime: node
+    region: singapore        # closest Render region to the Atlas cluster (AWS Mumbai, ap-south-1)
+    plan: free
+    rootDir: server
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CLIENT_ORIGIN
+        sync: false          # e.g. https://hack4hack-teams.vercel.app,http://localhost:5173
