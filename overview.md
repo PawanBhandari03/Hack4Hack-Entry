@@ -273,3 +273,62 @@ Fix it found: the invite-code element and its section were both labelled "Invite
 
 ### Decision — not merging Pawan's earlier hackathon-platform project
 Judging is about depth on concurrency/design, not breadth. Merging a second codebase 2 days before the deadline adds risk and interview surface without scoring. Instead its strongest idea (fully offline `docker compose up`) is reused as the official Docker Compose bonus, and the project is mentioned in the README/interview as background.
+
+### Step 21 — Deploy guide
+`docs/DEPLOY.md`: Render (API, Singapore) → Vercel (client, `VITE_API_URL`) → set `CLIENT_ORIGIN` → verify + deployed load test. Waiting on Pawan's Render/Vercel accounts.
+
+---
+
+## 4. Interview cheat sheet (say these out loud until they feel natural)
+
+**"Walk me through what happens when 50 people click join on the last seat."**
+Each request starts a MongoDB transaction. Inside it: (1) claim the person — update their Participant only if `teamId` is null; (2) take the seat — `findOneAndUpdate` on the Team only if `openSeats > 0`, decrementing it. All 50 transactions write the same Team document; MongoDB lets one commit and aborts the others with a WriteConflict. `withTransaction` retries them; on retry `openSeats` is 0, the conditional update matches nothing, and they get 409 TEAM_FULL. The race test fires 50 parallel requests and asserts exactly one 200 and 49 409s, and that the DB has exactly 4 members.
+
+**"Why not just check the count, then insert?"**
+Check-then-act is the classic race: two requests both read "1 seat left", both insert. The condition has to be *inside* the write so the database evaluates it atomically.
+
+**"Why not a lock / Redis / a mutex?"**
+An in-process mutex breaks with 2+ server instances. A distributed lock needs extra infra and can stay held if a process dies. Optimistic concurrency in the database needs nothing extra and the DB is already the source of truth.
+
+**"Why do you need a transaction at all if the update is atomic?"**
+A join touches several documents: Participant, Team, AuditLog, the user's other JoinRequests. The transaction makes them all-or-nothing — a crash can't leave "seat taken, person not in team". The chaos test kills the server mid-burst to prove it.
+
+**"What's the downside of your approach?"**
+Under heavy contention on one team, losers retry — more DB work and latency for that hot team. It's bounded (a team has ≤4 seats so it fills fast) and visible in `/metrics` (`txn_retries_total`).
+
+**"How is it idempotent?"**
+Two layers. (1) Client sends an `Idempotency-Key` per action and reuses it on retries; server inserts the key first (unique index), replays the stored response for a finished request, says 409 IN_PROGRESS for a running one. (2) Even without a key, the data model can't double-join: you need `teamId: null` to join.
+
+**"What if the server crashes after committing but before saving the idempotency response?"**
+The key stays "in_progress"; after 60 s it's treated as stale and the retry re-runs. Re-running a join finds `teamId` already set → ALREADY_IN_TEAM. No duplicate — that's why layer 2 exists.
+
+**"How do live updates work? What if a message is lost?"**
+Socket.io rooms per hackathon, per team (members only), per user. Events are emitted only after the transaction commits. On reconnect the client refetches everything over REST, so a lost event can't leave the screen wrong for long.
+
+**"How do you stop invite-code brute force?"**
+50 bits of randomness from `crypto.randomBytes` (1 quadrillion combos), only the SHA-256 hash stored, 10 attempts per 15 min per user, same error for "wrong" and "revoked". At 10 guesses / 15 min you'd need ~10^11 years.
+
+**"How did you hit p95 < 200 ms?"**
+Measured first. Baseline failed (1,059 ms) because Atlas free tier caps ~100 ops/s. Added a 1 s micro-cache with promise sharing → 146 ms. Then profiled: 50% of CPU was jsonwebtoken rebuilding the key every request → created the key once. Cached the serialized JSON. A realistic test then exposed a cache stampede → stale-while-revalidate. Final p95 91–95 ms.
+
+**"Isn't caching wrong for a real-time board?"**
+The cache is a read view, ≤1 s old. Writes never read it, they check inside the transaction. And changes are pushed over WebSockets instantly anyway.
+
+**"Why MongoDB and not Postgres?"**
+The challenge prefers it, and it handles this fine: single-document atomic conditional updates + multi-document transactions on a replica set. In Postgres I'd do the same with `UPDATE teams SET open_seats = open_seats - 1 WHERE id = $1 AND open_seats > 0` + a unique constraint on (hackathon, user).
+
+**"How does the suggestion score work?"**
+70% "what share of the team's missing skills do they have" (skills wanted minus skills members already have — duplicates score 0), 30% timezone closeness (1 − hours apart / 12, measured around the clock). Each result returns the breakdown.
+
+**"What would break first at 10× scale?"**
+Single API instance: Socket.io needs the Redis adapter to broadcast across instances, the in-memory caches/rate limits need Redis, and Atlas M0's ops/s limit. Code-wise the concurrency model already works across instances.
+
+**"What would you do with one more week?"** — see `docs/DESIGN.md` §4: Redis adapter + horizontal scaling, finalize/lock teams before deadline, refresh tokens in httpOnly cookies, smarter suggestions, OpenTelemetry tracing.
+
+**"What did AI do vs you?"** — Be honest: AI tools were used (allowed by the rules). Know every file: models → teamService → txn.js → idempotency → socket → board/suggestions → client api.js/state.jsx. Re-read this overview before the interview.
+
+**Live-change practice (they will ask for a small change):** try these yourself before the interview:
+1. Change max team size of the demo hackathon to 5 (seed / Hackathon doc) and watch seats update.
+2. Add a new audit action, e.g. log `PROFILE_UPDATED` in `PATCH /auth/me`.
+3. Change the suggestion weights to 60/40 in `suggestionService.js` and update the test.
+4. Add a field "github URL" to the user profile (model → zod schema → route → Profile page).
