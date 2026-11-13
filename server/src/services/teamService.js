@@ -498,11 +498,13 @@ export async function redeemInvite(userId, code) {
   // Fast path (no transaction): once the last seat is gone, everyone else is told immediately instead of
   // starting a transaction that is certain to fail. This is only an optimisation — the authoritative
   // check is the conditional seat update inside the transaction.
-  const snapshot = await Team.findById(invite.teamId).select('openSeats').lean();
+  // (Independent reads outside the transaction run in parallel: one DB round-trip instead of two.)
+  const [snapshot] = await Promise.all([
+    Team.findById(invite.teamId).select('openSeats').lean(),
+    ensureParticipant(invite.hackathonId, userId),
+  ]);
   if (!snapshot) throw notFound('TEAM_NOT_FOUND', 'This team no longer exists');
   if (snapshot.openSeats <= 0) throw conflict('TEAM_FULL', 'This team is already full');
-
-  await ensureParticipant(invite.hackathonId, userId);
   return runTxn(async (session, events) => {
     // Re-check the invite INSIDE the transaction (see bumpInviteEpoch for why this is race-free).
     const live = await Invite.findOne({ _id: invite._id, revokedAt: null, expiresAt: { $gt: new Date() } }).session(session).lean();
