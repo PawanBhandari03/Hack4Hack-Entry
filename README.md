@@ -21,7 +21,7 @@ People create teams, invite others with expiring codes, request to join (the lea
 | Teammate suggestions | `0.7 × missing-skill coverage + 0.3 × timezone closeness`, with a per-result breakdown |
 | Tests + CI | **43 API tests** (Vitest + Supertest on a real MongoDB replica set) + **5 browser tests** (Playwright: live updates across 2 browsers, phone layout, keyboard-only, axe accessibility), all in GitHub Actions |
 | Seed | 10,000 users + 2,000 teams |
-| Load test | Board **p95 91–95 ms** with 100 concurrent users (target < 200 ms), measured locally against Atlas; deployed run in [LOADTEST.md](docs/LOADTEST.md) §C |
+| Load test | 100 concurrent users (k6-style VUs): board **p95 12 ms** on 1 vCPU, 20 ms on 0.5 vCPU (target < 200 ms); saturation **p95 91 ms at 2,711 req/s**. CPU sizing + deployed run in [LOADTEST.md](docs/LOADTEST.md) |
 | UI | React, works on phones, keyboard-only accessible |
 | **Bonus** | Optimistic UI with rollback · `docker compose up` (fully offline) · Prometheus `/metrics` · **chaos test** (SIGKILL mid-join → 0 integrity violations) |
 

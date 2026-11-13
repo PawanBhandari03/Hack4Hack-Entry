@@ -304,6 +304,20 @@ Also fixed: metric route labels lost their prefix on error responses (`/redeem` 
 - Recorded honestly in `docs/LOADTEST.md` §C with the raw JSON.
 - **Interview angle:** "I load-tested the hosting tier *before* deploying and found 0.1 CPU can't meet the SLO — so I sized the instance from data."
 
+### Step 25 — CPU sizing with a proper "100 concurrent users" model
+- My "realistic" autocannon run (`connectionRate: 2`) turned out to be a **thundering herd**: all 100 connections start together and fire in the *same millisecond* twice a second. Renamed it **"Burst"** (kept as a stress test).
+- Added the standard model — **k6-style virtual users**: each of 100 VUs requests the board, waits, thinks a random 0.5–1.5 s, repeats (exactly how k6 scripts with `sleep()` model users).
+- Ran everything with the API capped at 0.1 / 0.5 / 1.0 CPU:
+
+| API CPU | ≈ host | 100 VUs p95 | Saturation p95 |
+|---|---|---:|---:|
+| 0.1 | Render Free | ❌ 8,048 ms | ❌ 997 ms |
+| 0.5 | Render Starter | ✅ 20 ms | ❌ 300 ms |
+| 1.0 | Railway vCPU | ✅ 12 ms | ✅ 157 ms |
+
+- **Conclusion:** the requirement passes easily from 0.5 CPU; Render Free can't meet it under any model → deploy the API on Railway (1 vCPU) or Render Starter. All in `docs/LOADTEST.md` ("CPU sizing").
+- **Interview Q: "What does 100 concurrent users mean in your test?"** → "Two models: 100 k6-style virtual users with think time (the realistic one — p95 12 ms on 1 vCPU), and 100 connections with zero think time (saturation — p95 ~150 ms on 1 vCPU, 91 ms on a full core). I also ran a synchronized burst as a stress test; that one needs horizontal scaling."
+
 ### Step 21 — Deploy guide
 `docs/DEPLOY.md`: Render (API, Singapore) → Vercel (client, `VITE_API_URL`) → set `CLIENT_ORIGIN` → verify + deployed load test. Waiting on Pawan's Render/Vercel accounts.
 

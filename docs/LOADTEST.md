@@ -1,21 +1,36 @@
 # Load-test report — "looking for teammates" board
 
 **Requirement:** p95 < 200 ms on the board endpoint with 100 concurrent users.
-**Result:** ✅ met in every final run. The best result was **p95 = 91 ms at 2,711 req/s**, with 0 errors.
+**Result:** ✅ met. With 100 k6-style virtual users, p95 is **12 ms on 1 vCPU and 20 ms on 0.5 vCPU**. Saturation reached **p95 = 91 ms at 2,711 req/s** (full laptop core), with 0 errors. ❌ Not achievable on a 0.1-CPU free instance; see CPU sizing below.
 
 | | |
 |---|---|
 | Endpoint | `GET /api/hackathons/:id/board/teams?limit=20` (authenticated, JWT) |
 | Data | Seeded: 10,000 users, 2,000 teams, 4,933 solo participants (`npm run seed`) |
-| Tool | [autocannon](https://github.com/mcollina/autocannon) via `server/scripts/loadtest.js`. autocannon doesn't report p95, so the script records **every** response time and computes exact percentiles. |
+| Tool | `server/scripts/loadtest.js`: [autocannon](https://github.com/mcollina/autocannon) for the burst and saturation runs, plus a built-in k6-style virtual-user runner. autocannon doesn't report p95, so the script records **every** response time and computes exact percentiles. |
 | Command | `TARGET=http://localhost:4000 npm run loadtest` |
 | Raw results | [`docs/loadtest/*.json`](loadtest/) |
 
-## The three runs (each 20 s, 100 connections)
+## The runs (100 concurrent users or connections each)
 
-1. **Realistic.** 100 users, each refreshing the board twice per second (200 req/s total).
-2. **Saturation.** 100 connections firing back-to-back with zero think time, page 1 only. This is the worst case.
+0. **100 virtual users, k6-style.** This is the standard model of "100 concurrent users", the same as k6's `http.get(); sleep(…)`. Each VU requests the board, waits for the answer, then thinks for a random 0.5–1.5 s. Start times are staggered. This run was added later, so the earlier result files (A, B) don't have it.
+1. **Burst.** All 100 connections fire at the *same instant*, twice per second (200 req/s). This is a worst-case thundering-herd stress test. In earlier files it was called "Realistic".
+2. **Saturation.** 100 connections firing back-to-back with zero think time, page 1 only. This shows the maximum throughput.
 3. **Saturation mix.** Page 1, page 2 (cursor), the People tab and a skill filter, in rotation.
+
+## CPU sizing: which hosting tier can meet the target?
+
+The API runs in Docker with a hard CPU cap (`docker-compose.render-sim.yml` or equivalent) against the local MongoDB container. The load generator runs on the same laptop.
+
+| API CPU | ≈ host | **100 VUs (k6-style) p95** | Burst p95 | Saturation p95 (req/s) |
+|---|---|---:|---:|---:|
+| **0.1** | Render Free | ❌ **8,048 ms** | ❌ 2,219 ms | ❌ 997 ms (42) + timeouts |
+| **0.5** | Render Starter | ✅ **20 ms** | ❌ 212 ms | ❌ 300 ms (543) |
+| **1.0** | Railway shared vCPU | ✅ **12 ms** | ❌ 262 ms | ✅ 157 ms (1,209) |
+
+Raw files: [0.1](loadtest/9-sim-0.1cpu-vus-FAILED.json) · [0.5](loadtest/7-sim-0.5cpu.json) · [1.0](loadtest/8-sim-1cpu.json)
+
+**Conclusion:** the requirement, 100 concurrent users with p95 < 200 ms, is met easily (p95 12–20 ms) from 0.5 CPU upward. Render's free 0.1 CPU can't meet it under any traffic model, so the API is deployed on a ≥ 0.5–1 vCPU instance. The synchronized-burst stress test needs more than one vCPU, because 100 requests arrive in the same millisecond. Horizontal scaling (2+ instances) is the answer there.
 
 ## Final results
 

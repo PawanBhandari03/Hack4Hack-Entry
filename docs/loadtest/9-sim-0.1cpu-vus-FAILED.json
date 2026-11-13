@@ -1,0 +1,93 @@
+{
+  "at": "2026-11-13T13:58:57.303Z",
+  "target": "http://localhost:4000",
+  "runs": [
+    {
+      "name": "100 virtual users (k6-style): GET /board/teams, think 0.5–1.5 s",
+      "target": "http://localhost:4000",
+      "virtualUsers": 100,
+      "durationSec": 15,
+      "requests": 654,
+      "rps": 43.6,
+      "statuses": {
+        "200": 654
+      },
+      "errors": 0,
+      "timeouts": 0,
+      "latencyMs": {
+        "p50": 626.6509000000005,
+        "p90": 4805.1029,
+        "p95": 8047.6255,
+        "p99": 11443.5026,
+        "max": 11545.078700000002
+      },
+      "pass": false
+    },
+    {
+      "name": "Burst: 100 users fire together every 500 ms (200 req/s)",
+      "target": "http://localhost:4000",
+      "connections": 100,
+      "durationSec": 15,
+      "ratePerConnection": 2,
+      "requests": 719,
+      "rps": 47.9,
+      "statuses": {
+        "200": 719
+      },
+      "errors": 51,
+      "timeouts": 51,
+      "latencyMs": {
+        "p50": 707.6483,
+        "p90": 1384.401,
+        "p95": 2218.9243,
+        "p99": 4000.5188,
+        "max": 9731.2033
+      },
+      "pass": false
+    },
+    {
+      "name": "Saturation: GET /board/teams (page 1), no think time",
+      "target": "http://localhost:4000",
+      "connections": 100,
+      "durationSec": 15,
+      "ratePerConnection": "unlimited",
+      "requests": 626,
+      "rps": 41.7,
+      "statuses": {
+        "200": 626
+      },
+      "errors": 76,
+      "timeouts": 76,
+      "latencyMs": {
+        "p50": 394.4379,
+        "p90": 605.2857,
+        "p95": 997.1862,
+        "p99": 6814.1142,
+        "max": 9825.9869
+      },
+      "pass": false
+    },
+    {
+      "name": "Saturation: board mix (teams p1/p2 + people + skill filter)",
+      "target": "http://localhost:4000",
+      "connections": 100,
+      "durationSec": 15,
+      "ratePerConnection": "unlimited",
+      "requests": 531,
+      "rps": 35.4,
+      "statuses": {
+        "200": 531
+      },
+      "errors": 73,
+      "timeouts": 73,
+      "latencyMs": {
+        "p50": 400.0668,
+        "p90": 1190.497,
+        "p95": 2721.7797,
+        "p99": 7675.1088,
+        "max": 9953.5137
+      },
+      "pass": false
+    }
+  ]
+}

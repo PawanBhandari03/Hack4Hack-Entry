@@ -70,6 +70,57 @@ async function run(name, requests, extra = {}) {
   return summary;
 }
 
+/**
+ * k6-style virtual users: each VU loops "request -> wait for the response -> think for a random
+ * 0.5–1.5 s", for DURATION seconds. Start times are staggered randomly over the first second.
+ * This is how k6 models N concurrent users (`http.get(); sleep(1)`), and it doesn't synchronise
+ * everyone into the same millisecond the way a fixed per-connection rate does.
+ */
+async function virtualUsers(name, url, headers) {
+  const times = [];
+  const statuses = {};
+  let errors = 0;
+  const end = Date.now() + DURATION * 1000;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const vu = async () => {
+    await sleep(Math.random() * 1000);
+    while (Date.now() < end) {
+      const t0 = performance.now();
+      try {
+        const res = await fetch(url, { headers });
+        await res.arrayBuffer();
+        times.push(performance.now() - t0);
+        statuses[res.status] = (statuses[res.status] ?? 0) + 1;
+      } catch {
+        errors++;
+      }
+      await sleep(500 + Math.random() * 1000);
+    }
+  };
+  await Promise.all(Array.from({ length: CONNECTIONS }, vu));
+  times.sort((a, b) => a - b);
+  const summary = {
+    name,
+    target: TARGET,
+    virtualUsers: CONNECTIONS,
+    durationSec: DURATION,
+    requests: times.length,
+    rps: Number((times.length / DURATION).toFixed(1)),
+    statuses,
+    errors,
+    timeouts: 0,
+    latencyMs: {
+      p50: percentile(times, 50),
+      p90: percentile(times, 90),
+      p95: percentile(times, 95),
+      p99: percentile(times, 99),
+      max: times[times.length - 1],
+    },
+  };
+  summary.pass = summary.latencyMs.p95 < 200 && errors === 0 && Object.keys(statuses).every((s) => s === '200');
+  return summary;
+}
+
 async function main() {
   console.log(`Target ${TARGET} — ${CONNECTIONS} concurrent connections for ${DURATION}s each`);
   const { token } = await json(`${TARGET}/api/auth/login`, {
@@ -85,9 +136,15 @@ async function main() {
   for (let i = 0; i < 5; i++) await json(`${TARGET}/api/hackathons/${hackathonId}/board/teams`, { headers });
 
   const first = await json(`${TARGET}/api/hackathons/${hackathonId}/board/teams?limit=20`, { headers });
-  // 1) Realistic: 100 users each refreshing the board twice a second (200 req/s total).
+  // 0) k6-style virtual users: the standard model of "100 concurrent users".
+  const vus = await virtualUsers(
+    `${CONNECTIONS} virtual users (k6-style): GET /board/teams, think 0.5–1.5 s`,
+    `${TARGET}/api/hackathons/${hackathonId}/board/teams?limit=20`,
+    headers
+  );
+  // 1) Burst stress: all 100 connections fire at the SAME instant, twice per second (worst-case herd).
   const realistic = await run(
-    'Realistic: 100 users x 2 req/s on /board/teams',
+    'Burst: 100 users fire together every 500 ms (200 req/s)',
     [{ method: 'GET', path: `/api/hackathons/${hackathonId}/board/teams?limit=20`, headers }],
     { connectionRate: 2 }
   );
@@ -102,7 +159,7 @@ async function main() {
     { method: 'GET', path: `/api/hackathons/${hackathonId}/board/teams?limit=20&skill=react`, headers },
   ]);
 
-  const report = { at: new Date().toISOString(), runs: [realistic, boardTeams, boardMixed] };
+  const report = { at: new Date().toISOString(), target: TARGET, runs: [vus, realistic, boardTeams, boardMixed] };
   const dir = path.resolve('loadtest-results');
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${report.at.replace(/[:.]/g, '-')}.json`);

@@ -1,0 +1,71 @@
+{
+  "at": "2026-11-13T13:53:22.651Z",
+  "runs": [
+    {
+      "name": "Realistic: 100 users x 2 req/s on /board/teams",
+      "target": "http://localhost:4000",
+      "connections": 100,
+      "durationSec": 15,
+      "ratePerConnection": 2,
+      "requests": 3004,
+      "rps": 200.3,
+      "statuses": {
+        "200": 3004
+      },
+      "errors": 0,
+      "timeouts": 0,
+      "latencyMs": {
+        "p50": 74.0247,
+        "p90": 195.5139,
+        "p95": 259.1693,
+        "p99": 345.6895,
+        "max": 457.3309
+      },
+      "pass": false
+    },
+    {
+      "name": "Saturation: GET /board/teams (page 1), no think time",
+      "target": "http://localhost:4000",
+      "connections": 100,
+      "durationSec": 15,
+      "ratePerConnection": "unlimited",
+      "requests": 17870,
+      "rps": 1191.3,
+      "statuses": {
+        "200": 17870
+      },
+      "errors": 0,
+      "timeouts": 0,
+      "latencyMs": {
+        "p50": 61.4837,
+        "p90": 126.7819,
+        "p95": 155.4057,
+        "p99": 216.3722,
+        "max": 5019.9234
+      },
+      "pass": true
+    },
+    {
+      "name": "Saturation: board mix (teams p1/p2 + people + skill filter)",
+      "target": "http://localhost:4000",
+      "connections": 100,
+      "durationSec": 15,
+      "ratePerConnection": "unlimited",
+      "requests": 18603,
+      "rps": 1240.2,
+      "statuses": {
+        "200": 18603
+      },
+      "errors": 0,
+      "timeouts": 0,
+      "latencyMs": {
+        "p50": 62.7769,
+        "p90": 120.2035,
+        "p95": 139.9915,
+        "p99": 195.7306,
+        "max": 3807.1028
+      },
+      "pass": true
+    }
+  ]
+}
