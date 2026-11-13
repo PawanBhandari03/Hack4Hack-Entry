@@ -353,3 +353,20 @@ Single API instance: Socket.io needs the Redis adapter to broadcast across insta
 2. Add a new audit action, e.g. log `PROFILE_UPDATED` in `PATCH /auth/me`.
 3. Change the suggestion weights to 60/40 in `suggestionService.js` and update the test.
 4. Add a field "github URL" to the user profile (model → zod schema → route → Profile page).
+
+---
+
+## 5. Walkthrough video — draft script (≤ 5 min)
+
+Setup before recording: deployed app open in 2 browser windows side by side (normal + incognito), a terminal in `server/`, the GitHub repo + Actions tab, `/health` opened once to wake Render.
+
+| Time | Show | Say (roughly) |
+|---|---|---|
+| 0:00–0:20 | README on GitHub | "I picked Problem 1, race-proof team formation. React, Node/Express, MongoDB, Socket.io. Everything here is tested in CI." |
+| 0:20–1:30 | Two browsers: A creates a team, generates a code; B joins with it → A's page updates instantly; B sends a request elsewhere; leader gets a toast and accepts | "Invite codes join instantly; requests need the leader. Notice I never refresh: updates are pushed over WebSockets, and only after the database transaction commits." |
+| 1:30–2:40 | `teamService.js` → `addMemberInTxn`; `txn.js` | "The core idea: two conditional updates in one transaction: claim the person only if `teamId` is null, take the seat only if `openSeats > 0`. If 50 people race, MongoDB lets one transaction write the team document and aborts the others with a write conflict. They retry with backoff, see zero seats, and get TEAM_FULL." |
+| 2:40–3:20 | Terminal: `TARGET=<prod> npm run race-demo` → `49 × TEAM_FULL, 1 × joined, integrity OK` | "This is 50 real users hitting the last seat on the deployed app right now. Exactly one wins, and the integrity checker confirms counts and leaders are consistent." |
+| 3:20–3:50 | `/metrics` → `txn_retries_total`; mention the retry-storm story | "My first version used the driver's immediate retries: 1,010 retries for one race. Backoff with jitter and writing the hot document last brought it to 49." |
+| 3:50–4:20 | Actions tab (all green) + `docs/LOADTEST.md` table | "40 API tests including race and chaos tests, plus 5 Playwright browser tests including accessibility. Board p95 is 95 ms with 100 users. It first failed at 1 second; profiling found JWT verification was half the CPU." |
+| 4:20–4:50 | Phone-width window + Tab through the board | "Works on phones and with the keyboard alone. axe finds no serious violations." |
+| 4:50–5:00 | `docs/DESIGN.md` §4 | "With another week: Redis adapter to scale out, team finalization, refresh tokens. Thanks!" |
