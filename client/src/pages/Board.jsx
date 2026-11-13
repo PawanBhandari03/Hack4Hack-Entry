@@ -83,6 +83,31 @@ function useLiveBoard(kind, hackathonId, skill) {
 
 const key = (i) => i.id ?? i.userId;
 
+/** "Team formation closes in 3d 4h" — the server enforces the deadline; this just shows it. */
+function Deadline({ closesAt }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  if (!closesAt) return null;
+  const ms = new Date(closesAt).getTime() - now;
+  if (ms <= 0) return <p className="badge badge-danger">Team formation has closed</p>;
+  const d = Math.floor(ms / 86_400_000);
+  const h = Math.floor((ms % 86_400_000) / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  return (
+    <p className="small">
+      <span className="muted">Team formation closes in </span>
+      <strong>
+        <time dateTime={new Date(closesAt).toISOString()} title={new Date(closesAt).toLocaleString()}>
+          {d > 0 ? `${d}d ${h}h` : `${h}h ${m}m`}
+        </time>
+      </strong>
+    </p>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 
 function MyStatus() {
@@ -363,6 +388,7 @@ function BoardInner({ hackathon }) {
         <p className="muted">
           Teams of {hackathon.minTeamSize}–{hackathon.maxTeamSize}. Everything on this page updates live.
         </p>
+        <Deadline closesAt={hackathon.teamFormationClosesAt} />
       </div>
 
       <MyStatus />

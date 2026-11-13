@@ -6,6 +6,7 @@ process.env.JWT_SECRET = 'test-secret';
 
 const { syncAllIndexes, allModels } = await import('../src/models/index.js');
 const { clearBoardCache } = await import('../src/services/boardService.js');
+const { clearHackathonCache } = await import('../src/services/teamService.js');
 
 beforeAll(async () => {
   const uri = inject('mongoUri');
@@ -18,6 +19,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await Promise.all(allModels.map((m) => m.deleteMany({})));
   clearBoardCache();
+  clearHackathonCache();
 });
 
 afterAll(async () => {

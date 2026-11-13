@@ -20,3 +20,17 @@ export const inviteLimiter = make({
 
 /** Login/register: 20 attempts per 15 min per IP (password guessing). */
 export const authLimiter = make({ windowMs: 15 * 60 * 1000, limit: 20 });
+
+/** Anti-spam: one user can't fire join requests at hundreds of teams. 30 per 15 min per user. */
+export const joinRequestLimiter = make({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  keyGenerator: (req) => `request:${req.userId}`,
+});
+
+/** Anti-spam: create/leave/create loops. 20 team creations per hour per user. */
+export const createTeamLimiter = make({
+  windowMs: 60 * 60 * 1000,
+  limit: 20,
+  keyGenerator: (req) => `create:${req.userId}`,
+});

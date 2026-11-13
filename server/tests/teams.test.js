@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { api, makeHackathon, makeUser, makeUsers, createTeamVia, inviteCode, joinWithCode, key } from './helpers.js';
-import { Team, Participant, Invite, AuditLog, JoinRequest } from '../src/models/index.js';
+import { Team, Participant, Invite, AuditLog, JoinRequest, Hackathon } from '../src/models/index.js';
+import { clearHackathonCache } from '../src/services/teamService.js';
 
 describe('team rules', () => {
   it('creates a team with the creator as leader and enforces unique names', async () => {
@@ -241,5 +242,27 @@ describe('audit log', () => {
     expect(res.body.items[0]).toMatchObject({ actorId: member.id, targetUserId: member.id });
     expect(res.body.items[0].at).toBeTruthy();
     expect((await api().get(`/api/teams/${team.id}/audit`).set(outsider.auth)).status).toBe(403);
+  });
+});
+
+describe('team formation deadline', () => {
+  it('after the deadline: no creating, joining or requesting — but leaving still works', async () => {
+    const h = await makeHackathon({ teamFormationClosesAt: new Date(Date.now() + 60_000) });
+    const [leader, member, late] = await makeUsers(3);
+    const team = await createTeamVia(leader, h._id);
+    const code = await inviteCode(leader, team.id);
+    expect((await joinWithCode(member, code)).status).toBe(200);
+
+    await Hackathon.updateOne({ _id: h._id }, { $set: { teamFormationClosesAt: new Date(Date.now() - 1000) } });
+    clearHackathonCache(); // organiser changed the deadline (in prod this cache is 30 s)
+
+    const create = await api().post(`/api/hackathons/${h._id}/teams`).set(late.auth).send({ name: 'Too Late' });
+    const join = await joinWithCode(late, code);
+    const req = await api().post(`/api/teams/${team.id}/requests`).set(late.auth).send({});
+    for (const r of [create, join, req]) {
+      expect(r.status).toBe(409);
+      expect(r.body.error.code).toBe('TEAM_FORMATION_CLOSED');
+    }
+    expect((await api().post(`/api/teams/${team.id}/leave`).set(member.auth)).status).toBe(200);
   });
 });

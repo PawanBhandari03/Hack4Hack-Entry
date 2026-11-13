@@ -35,7 +35,7 @@ Fifty people race for the last seat. All 50 transactions write the same `Team` d
 **Real-time:** services queue events, and `runTxn` publishes them **only after commit**. A rolled-back change is never broadcast. Clients refetch on reconnect.
 
 **Proof:**
-- 38 tests in CI, including races of 50 users on 1 seat, 10 accepts at once, 1 user joining 5 teams, 10 simultaneous creates, and all members leaving at once.
+- 39 tests in CI, including races of 50 users on 1 seat, 10 accepts at once, 1 user joining 5 teams, 10 simultaneous creates, and all members leaving at once.
 - A **chaos test** that SIGKILLs the server mid-burst (340 operations), restarts it, retries with the same keys, then runs an integrity checker (`npm run verify`). It found 0 violations.
 - `/metrics` exposes `txn_retries_total`, a live count of races that were resolved safely.
 
@@ -49,6 +49,8 @@ Fifty people race for the last seat. All 50 transactions write the same `Team` d
 | Codes: 50-bit random, stored hashed, 10 attempts per 15 min per user | Brute force becomes hopeless; a DB leak doesn't expose codes | The leader sees a code only once (regenerate to see a new one) |
 | 1 s board cache with stale-while-revalidate | Atlas M0 allows about 100 ops/s; p95 went from 1,059 ms to **91–95 ms** | The board can be about 1 s stale. Writes never use the cache, and WebSockets push changes instantly. |
 | Leader leaves → earliest-joined member becomes leader | Deterministic and fair; no vote needed | May not be the person the team would choose (manual transfer exists) |
+| Formation deadline blocks create/join/request/accept, but **not** leave | Matches a real "team formation closes" cut-off without trapping people | Hackathon settings are cached for 30 s, so a deadline change takes ≤ 30 s to apply |
+| Per-user anti-spam limits: 30 join requests / 15 min, 20 team creations / h | Stops one account flooding 2,000 leaders | In-memory per instance (needs Redis when scaled out) |
 | Min size shown as "forming / meets minimum", not enforced on leave | Blocking people from leaving traps them | A team can drop below the minimum. Enforcement belongs at submission time. |
 | Suggestions: `0.7 × missing-skill coverage + 0.3 × timezone closeness` | Explainable, cheap, and the breakdown is returned | Heuristic, not learned. Scans at most 500 candidates. |
 

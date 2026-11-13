@@ -94,6 +94,7 @@ export function errorText(err) {
     NOT_LEADER: 'Only the team leader can do that.',
     ALREADY_DECIDED: 'Someone already handled this request.',
     TEAM_NOT_FOUND: 'This team no longer exists.',
+    TEAM_FORMATION_CLOSED: 'Team formation for this hackathon has closed.',
   };
   if (err?.code === 'VALIDATION_ERROR' && err.details?.length) {
     return err.details.map((d) => `${d.path.split('.').slice(1).join('.')}: ${d.message}`).join(' · ');

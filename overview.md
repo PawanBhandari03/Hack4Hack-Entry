@@ -250,5 +250,11 @@ Why: Render's free tier gives only **0.1 CPU**, so CPU per request decides wheth
 - `docs/DESIGN.md` — the required **1-page design doc**: data model, how races are prevented, trade-offs table, what we'd do with one more week.
 - `docs/LOADTEST.md` — load-test report with all 5 runs **including the 2 failures and how each was diagnosed**, plus raw JSON in `docs/loadtest/`. Deployed (Render) run still to be added.
 
+### Step 18 — Team-formation deadline + anti-spam limits
+- `Hackathon.teamFormationClosesAt` is now **enforced** (`assertFormationOpen` in `teamService.js`): after it, create / join by code / request / accept → `409 TEAM_FORMATION_CLOSED`. **Leaving is still allowed** (blocking it would trap people). The check runs inside `addMemberInTxn`, so even an accept that races with the deadline is caught.
+- Demo hackathon deadline = 60 days out (so reviewers can try everything during interview week). Board shows "Team formation closes in Xd Yh".
+- New per-user rate limits: **30 join requests / 15 min**, **20 team creations / hour** — stops one account spamming every leader.
+- New test (39 total): after the deadline, create/join/request all get `TEAM_FORMATION_CLOSED`, leave still returns 200.
+
 ### Decision — not merging Pawan's earlier hackathon-platform project
 Judging is about depth on concurrency/design, not breadth. Merging a second codebase 2 days before the deadline adds risk and interview surface without scoring. Instead its strongest idea (fully offline `docker compose up`) is reused as the official Docker Compose bonus, and the project is mentioned in the README/interview as background.

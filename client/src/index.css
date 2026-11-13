@@ -692,3 +692,8 @@ input:disabled {
     width: 100%;
   }
 }
+.badge-danger {
+  color: var(--danger);
+  border-color: var(--danger);
+  display: inline-block;
+}

@@ -121,6 +121,7 @@ async function cancelPendingRequestsOfUser(session, events, hackathonId, userId)
 // which throttles at ~100 operations/second.
 const hackathonCache = new Map(); // id -> { at, value }
 const HACKATHON_TTL_MS = 30_000;
+export const clearHackathonCache = () => hackathonCache.clear();
 
 export async function getHackathonOrThrow(hackathonId) {
   if (!mongoose.isValidObjectId(hackathonId)) throw notFound('HACKATHON_NOT_FOUND', 'Hackathon not found');
@@ -131,6 +132,16 @@ export async function getHackathonOrThrow(hackathonId) {
   if (!h) throw notFound('HACKATHON_NOT_FOUND', 'Hackathon not found');
   hackathonCache.set(key, { at: Date.now(), value: h });
   return h;
+}
+
+/**
+ * Rule: once team formation has closed, nobody can create, join, request or accept.
+ * Leaving / removing stays allowed (people drop out; blocking that would trap them).
+ */
+export function assertFormationOpen(hackathon, now = new Date()) {
+  if (hackathon.teamFormationClosesAt && now >= new Date(hackathon.teamFormationClosesAt)) {
+    throw conflict('TEAM_FORMATION_CLOSED', 'Team formation for this hackathon has closed');
+  }
 }
 
 /**
@@ -167,6 +178,7 @@ export async function ensureParticipant(hackathonId, userId) {
  * Order matters only for which error we report; atomicity comes from the transaction.
  */
 async function addMemberInTxn(session, events, { team, userId, actorId, via }) {
+  assertFormationOpen(await getHackathonOrThrow(team.hackathonId));
   const now = new Date();
   const participant = await Participant.findOneAndUpdate(
     { hackathonId: team.hackathonId, userId, teamId: null },
@@ -291,6 +303,7 @@ async function loadTeamAsLeader(session, teamId, actorId) {
 
 export async function createTeam(userId, hackathonId, { name, description = '', skillsWanted = [] }) {
   const hackathon = await getHackathonOrThrow(hackathonId);
+  assertFormationOpen(hackathon);
   await ensureParticipant(hackathonId, userId);
   try {
     return await runTxn(async (session, events) => {
@@ -487,6 +500,7 @@ export async function requestToJoin(userId, teamId, message = '') {
   if (!mongoose.isValidObjectId(teamId)) throw notFound('TEAM_NOT_FOUND', 'Team not found');
   const team = await Team.findById(teamId).lean();
   if (!team) throw notFound('TEAM_NOT_FOUND', 'Team not found');
+  assertFormationOpen(await getHackathonOrThrow(team.hackathonId));
   const participant = await ensureParticipant(team.hackathonId, userId);
   if (participant.teamId) throw conflict('ALREADY_IN_TEAM', 'You are already in a team for this hackathon');
   if (team.openSeats <= 0) throw conflict('TEAM_FULL', 'This team is already full');
@@ -638,6 +652,7 @@ export async function getMyState(hackathonId, userId) {
       description: hackathon.description,
       minTeamSize: hackathon.minTeamSize,
       maxTeamSize: hackathon.maxTeamSize,
+      teamFormationClosesAt: hackathon.teamFormationClosesAt ?? null,
     },
     me: personSummary(participant),
     team: team ? teamSummary(team) : null,

@@ -3,6 +3,7 @@ import { Hackathon } from '../models/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { validate, schemas } from '../middleware/validate.js';
 import { idempotency } from '../middleware/idempotency.js';
+import { createTeamLimiter } from '../middleware/rateLimit.js';
 import * as teams from '../services/teamService.js';
 import * as board from '../services/boardService.js';
 import { getSuggestions } from '../services/suggestionService.js';
@@ -20,6 +21,7 @@ router.get('/', async (_req, res) => {
       description: h.description,
       minTeamSize: h.minTeamSize,
       maxTeamSize: h.maxTeamSize,
+      teamFormationClosesAt: h.teamFormationClosesAt ?? null,
     })),
   });
 });
@@ -47,7 +49,7 @@ router.get('/:hackathonId/suggestions', hp, async (req, res) => {
   res.json(await getSuggestions(req.params.hackathonId, req.userId));
 });
 
-router.post('/:hackathonId/teams', hp, idempotency(), validate({ body: schemas.createTeam }), async (req, res) => {
+router.post('/:hackathonId/teams', hp, createTeamLimiter, idempotency(), validate({ body: schemas.createTeam }), async (req, res) => {
   res.status(201).json({ team: await teams.createTeam(req.userId, req.params.hackathonId, req.body) });
 });
 

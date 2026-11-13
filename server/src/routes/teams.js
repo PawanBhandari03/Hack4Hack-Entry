@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { validate, schemas } from '../middleware/validate.js';
 import { idempotency } from '../middleware/idempotency.js';
-import { inviteLimiter } from '../middleware/rateLimit.js';
+import { inviteLimiter, joinRequestLimiter } from '../middleware/rateLimit.js';
 import * as teams from '../services/teamService.js';
 
 /* ------------------------------- /api/teams ------------------------------- */
@@ -42,7 +42,7 @@ teamsRouter.delete('/:teamId/invites', tp, async (req, res) => {
   res.json(await teams.revokeInvites(req.userId, req.params.teamId));
 });
 
-teamsRouter.post('/:teamId/requests', tp, idempotency(), validate({ body: schemas.joinRequest }), async (req, res) => {
+teamsRouter.post('/:teamId/requests', tp, joinRequestLimiter, idempotency(), validate({ body: schemas.joinRequest }), async (req, res) => {
   const { request, created } = await teams.requestToJoin(req.userId, req.params.teamId, req.body.message);
   res.status(created ? 201 : 200).json({ request });
 });

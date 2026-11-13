@@ -66,6 +66,8 @@ async function main() {
     description: 'Demo hackathon with 10,000 participants for the team-formation service.',
     minTeamSize: 2,
     maxTeamSize: 4,
+    // Far enough out that reviewers can still try everything during the interview weeks.
+    teamFormationClosesAt: new Date(Date.now() + 60 * 24 * 3600 * 1000),
   });
   const passwordHash = await bcrypt.hash(PASSWORD, 10);
   const offsets = Object.fromEntries(TIMEZONES.map((tz) => [tz, utcOffsetMinutes(tz)]));
