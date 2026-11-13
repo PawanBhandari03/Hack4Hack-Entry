@@ -63,18 +63,14 @@ function useLiveBoard(kind, hackathonId, skill) {
       upsert(p, !p.teamId && p.lookingForTeam && matchesSkill(p.skills));
       ping(p.userId);
     };
-    const subscribe = () => socket.emit('board:subscribe', hackathonId);
+    // The hackathon room subscription lives in state.jsx (app-wide), so team pages get updates too.
     const resync = () => load(null);
 
-    subscribe();
-    socket.on('connect', subscribe);
     socket.on('connect', resync); // missed events while offline -> refetch
     socket.on('board:team', onTeam);
     socket.on('board:team-removed', onTeamRemoved);
     socket.on('board:person', onPerson);
     return () => {
-      socket.emit('board:unsubscribe', hackathonId);
-      socket.off('connect', subscribe);
       socket.off('connect', resync);
       socket.off('board:team', onTeam);
       socket.off('board:team-removed', onTeamRemoved);

@@ -95,6 +95,15 @@ export function AppProvider({ children }) {
     };
   }, [token]);
 
+  // Board/team-card events for the whole app session (Board AND team pages use them).
+  useEffect(() => {
+    if (!socket || !hackathon) return;
+    const sub = () => socket.emit('board:subscribe', hackathon.id);
+    sub();
+    socket.on('connect', sub); // rooms are lost on reconnect -> rejoin
+    return () => socket.off('connect', sub);
+  }, [socket, hackathon]);
+
   // Private notifications.
   useEffect(() => {
     if (!socket) return;

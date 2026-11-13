@@ -176,6 +176,11 @@ export default function TeamPage() {
       setData(null);
       setError({ code: 'TEAM_NOT_FOUND' });
     };
+    const onRemoved = (p) => {
+      if (p.teamId !== teamId) return;
+      setData(null);
+      setError({ code: 'TEAM_NOT_FOUND' });
+    };
     // Board events also cover non-members watching this page (seat counts).
     const onBoardTeam = (t) => t.id === teamId && load();
     sub();
@@ -184,6 +189,7 @@ export default function TeamPage() {
     socket.on('team:updated', onUpdate);
     socket.on('team:requests', onUpdate);
     socket.on('team:deleted', onDeleted);
+    socket.on('board:team-removed', onRemoved); // non-members hear about deletion via the hackathon room
     socket.on('board:team', onBoardTeam);
     return () => {
       socket.emit('team:unsubscribe', teamId);
@@ -192,6 +198,7 @@ export default function TeamPage() {
       socket.off('team:updated', onUpdate);
       socket.off('team:requests', onUpdate);
       socket.off('team:deleted', onDeleted);
+      socket.off('board:team-removed', onRemoved);
       socket.off('board:team', onBoardTeam);
     };
   }, [socket, teamId, load, toast]);
