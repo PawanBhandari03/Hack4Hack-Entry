@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api.js';
-import { useApp } from '../state.jsx';
+import { useApp } from '../appContext.js';
 import SkillInput from '../components/SkillInput.jsx';
-import { Chips, Seats, Spinner, Empty, tzLabel } from '../components/common.jsx';
+import { Chips, Seats, Spinner, Empty } from '../components/common.jsx';
+import { tzLabel } from '../lib/format.js';
 
 const ACTION_TEXT = {
   TEAM_CREATED: 'created the team',
@@ -162,6 +163,7 @@ export default function TeamPage() {
   }, [teamId]);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- fetch when the team id changes
     load();
   }, [load]);
 

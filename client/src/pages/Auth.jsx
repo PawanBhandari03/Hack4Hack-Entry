@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { api, errorText } from '../api.js';
-import { useApp } from '../state.jsx';
+import { useApp } from '../appContext.js';
 import SkillInput from '../components/SkillInput.jsx';
-import { TIMEZONES } from '../components/common.jsx';
+import { TIMEZONES } from '../lib/format.js';
 
 const guessTz = () => {
   try {

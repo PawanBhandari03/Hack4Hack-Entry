@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
-import { useApp } from '../state.jsx';
+import { useApp } from '../appContext.js';
 import SkillInput from '../components/SkillInput.jsx';
-import { Chips, Seats, Spinner, Empty, tzLabel } from '../components/common.jsx';
+import { Chips, Seats, Spinner, Empty } from '../components/common.jsx';
+import { tzLabel } from '../lib/format.js';
 
 /* ------------------------------------------------------------------ */
 /* Live list: fetch a page over REST, then apply WebSocket updates.    */
@@ -36,6 +37,7 @@ function useLiveBoard(kind, hackathonId, skill) {
   );
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- (re)fetch when tab/skill changes
     load(null);
   }, [load]);
 

@@ -2,12 +2,11 @@
  * App-wide state: logged-in user, the current hackathon, "my state" (my team, my requests),
  * the Socket.io connection and toast notifications.
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import { api, API_URL, tokenStore, errorText } from './api.js';
+import { AppCtx } from './appContext.js';
 
-const AppCtx = createContext(null);
-export const useApp = () => useContext(AppCtx);
 
 export function AppProvider({ children }) {
   const [token, setToken] = useState(() => tokenStore.get());
@@ -78,6 +77,7 @@ export function AppProvider({ children }) {
   }, [hackathon, token]);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- data fetch on login/hackathon change
     refreshMine();
   }, [refreshMine]);
 
@@ -87,6 +87,7 @@ export function AppProvider({ children }) {
     const s = io(API_URL, { auth: { token }, transports: ['websocket', 'polling'] });
     s.on('connect', () => setConnected(true));
     s.on('disconnect', () => setConnected(false));
+    // oxlint-disable-next-line react/set-state-in-effect -- syncing with an external system (the socket)
     setSocket(s);
     return () => {
       s.close();

@@ -24,6 +24,7 @@ jobs:
           path: ~/.cache/mongodb-binaries
           key: mongodb-binaries-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}
       - run: npm ci
+      - run: npm run lint
       - name: Run API tests (includes the 50-user race test)
         run: npm test
 
@@ -40,6 +41,7 @@ jobs:
           cache: npm
           cache-dependency-path: client/package-lock.json
       - run: npm ci
+      - run: npm run lint
       - run: npm run build
 
   docker-build:

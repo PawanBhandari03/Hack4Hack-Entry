@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { api } from '../api.js';
-import { useApp } from '../state.jsx';
+import { useApp } from '../appContext.js';
 import SkillInput from '../components/SkillInput.jsx';
-import { TIMEZONES } from '../components/common.jsx';
+import { TIMEZONES } from '../lib/format.js';
 
 
 export default function Profile() {

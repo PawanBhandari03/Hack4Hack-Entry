@@ -1,5 +1,6 @@
 import { BrowserRouter, Link, NavLink, Navigate, Route, Routes } from 'react-router-dom';
-import { AppProvider, useApp } from './state.jsx';
+import { AppProvider } from './state.jsx';
+import { useApp } from './appContext.js';
 import Auth from './pages/Auth.jsx';
 import Board from './pages/Board.jsx';
 import TeamPage from './pages/Team.jsx';

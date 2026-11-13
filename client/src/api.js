@@ -53,7 +53,7 @@ export async function api(path, { method = 'GET', body, retries = 2 } = {}) {
     let res;
     try {
       res = await fetch(`${API_URL}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
-    } catch (err) {
+    } catch {
       // Network failure: we don't know if the server applied it. Safe to retry thanks to the key.
       if (attempt < retries) {
         await wait(300 * (attempt + 1));

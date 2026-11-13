@@ -256,5 +256,9 @@ Why: Render's free tier gives only **0.1 CPU**, so CPU per request decides wheth
 - New per-user rate limits: **30 join requests / 15 min**, **20 team creations / hour** — stops one account spamming every leader.
 - New test (39 total): after the deadline, create/join/request all get `TEAM_FORMATION_CLOSED`, leave still returns 200.
 
+### Step 19 — Linting (code quality)
+- `oxlint` (very fast Rust linter, comes with the Vite template) on client AND server, `--deny-warnings`, runs in CI before tests/build.
+- Fixes it drove: unused catch variable; moved `tzLabel`/`TIMEZONES` to `client/src/lib/format.js` and the React context + `useApp` hook to `client/src/appContext.js` (files that export components should only export components — React Fast Refresh). The four "setState inside effect" spots are intentional (data fetch on id change, syncing with the socket) and are annotated with the reason.
+
 ### Decision — not merging Pawan's earlier hackathon-platform project
 Judging is about depth on concurrency/design, not breadth. Merging a second codebase 2 days before the deadline adds risk and interview surface without scoring. Instead its strongest idea (fully offline `docker compose up`) is reused as the official Docker Compose bonus, and the project is mentioned in the README/interview as background.
