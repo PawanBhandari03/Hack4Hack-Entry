@@ -5,7 +5,7 @@ A production-grade team-formation service for a 10,000-participant hackathon, bu
 People create teams, invite others with expiring codes, request to join (the leader accepts or declines), and find each other on a live "looking for teammates" board. **When 50 people click "join" for the last seat at the same instant, exactly one gets it.**
 
 - **Live app:** _TBD_  ·  **API:** _TBD_
-- **Design doc (1 page):** [docs/DESIGN.md](docs/DESIGN.md)  ·  **Load-test report:** [docs/LOADTEST.md](docs/LOADTEST.md)
+- **Design doc (1 page):** [docs/DESIGN.md](docs/DESIGN.md)  ·  **Load-test report:** [docs/LOADTEST.md](docs/LOADTEST.md)  ·  **Deploy guide:** [docs/DEPLOY.md](docs/DEPLOY.md)
 - **Demo logins:** `demo1@hack4hack.dev` … `demo5@hack4hack.dev`, password `password123`
 
 ## Highlights
@@ -60,6 +60,9 @@ npm run dev                 # http://localhost:5173 (uses VITE_API_URL, default 
 | `npm run seed` | Wipe and seed 10,000 users / 2,000 teams |
 | `npm run loadtest` | Realistic and saturation load tests, exact p95 (`TARGET=…` to point elsewhere) |
 | `npm run verify` | Check every invariant (member counts, seats, one leader, no orphans) against the DB |
+| `npm run lint` | oxlint, zero warnings allowed |
+
+Browser tests (needs a running stack, e.g. `docker compose up`): `cd e2e && npm ci && npx playwright install chromium && BASE_URL=http://localhost:8080 npx playwright test`
 
 ## API
 
