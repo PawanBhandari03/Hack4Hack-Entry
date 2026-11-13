@@ -7,6 +7,8 @@ import { authLimiter } from '../middleware/rateLimit.js';
 import { conflict, unauthorized, notFound, isDuplicateKey } from '../lib/errors.js';
 import { utcOffsetMinutes } from '../lib/timezone.js';
 import { tagRouteBase } from '../lib/metrics.js';
+import { publish, rooms } from '../lib/realtime.js';
+import { personSummary } from '../services/teamService.js';
 
 const router = Router();
 router.use(tagRouteBase);
@@ -64,6 +66,14 @@ router.patch('/me', requireAuth, validate({ body: schemas.updateProfile }), asyn
   // Keep the denormalised copies on Participant rows in sync (used by the board + suggestions).
   const { name, skills, timezone, utcOffsetMinutes: off, bio } = user;
   await Participant.updateMany({ userId: user._id }, { $set: { name, skills, timezone, utcOffsetMinutes: off, bio } });
+  // Live: update this person's card on every board they appear on, and their team pages.
+  const rows = await Participant.find({ userId: user._id }).lean();
+  publish(
+    rows.flatMap((p) => [
+      { room: rooms.hackathon(p.hackathonId), event: 'board:person', payload: personSummary(p) },
+      ...(p.teamId ? [{ room: rooms.team(p.teamId), event: 'team:updated', payload: { teamId: String(p.teamId) } }] : []),
+    ])
+  );
   res.json({ user: publicUser(user) });
 });
 

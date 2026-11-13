@@ -28,6 +28,14 @@ import { ensureParticipant, personSummary, teamSummary } from './teamService.js'
 import { hoursApart } from '../lib/timezone.js';
 
 export const WEIGHTS = { skills: 0.7, timezone: 0.3 };
+/** Returned with every response so API consumers can see exactly how the ranking works. */
+export const FORMULA = {
+  score: 'round(100 * (0.7 * skillScore + 0.3 * timezoneScore))',
+  skillScore:
+    "share of the team's MISSING skills (skillsWanted minus skills members already have) that the candidate has; " +
+    'if the team listed none, the share of the candidate\'s skills that are new to the team',
+  timezoneScore: '1 - hoursApart / 12, hours measured around the 24h clock (team time = circular mean of members)',
+};
 const CANDIDATE_POOL = 500; // score at most this many candidates in memory
 
 const norm = (s) => s.trim().toLowerCase();
@@ -95,7 +103,7 @@ export async function getSuggestions(hackathonId, userId, limit = 10) {
       }))
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
-    return { mode: 'people', weights: WEIGHTS, neededSkills: needed, items: ranked };
+    return { mode: 'people', weights: WEIGHTS, formula: FORMULA, neededSkills: needed, items: ranked };
   }
 
   const teams = await Team.find({ hackathonId: me.hackathonId, lookingForMembers: true, openSeats: { $gt: 0 } })
@@ -128,5 +136,5 @@ export async function getSuggestions(hackathonId, userId, limit = 10) {
     })
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
-  return { mode: 'teams', weights: WEIGHTS, items: ranked };
+  return { mode: 'teams', weights: WEIGHTS, formula: FORMULA, items: ranked };
 }

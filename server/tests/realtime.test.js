@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'node:http';
 import { io as connect } from 'socket.io-client';
-import { app, makeHackathon, makeUsers, createTeamVia, inviteCode, joinWithCode } from './helpers.js';
+import { app, api, makeHackathon, makeUsers, createTeamVia, inviteCode, joinWithCode } from './helpers.js';
 import { attachSocket } from '../src/socket.js';
 import { setIo } from '../src/lib/realtime.js';
 
@@ -75,6 +75,22 @@ describe('real-time (Socket.io)', () => {
     const s = await client(outsider.token);
     const res = await s.emitWithAck('team:subscribe', team.id);
     expect(res).toEqual({ ok: true, member: false });
+    s.close();
+  });
+});
+
+describe('real-time profile updates', () => {
+  it('editing your skills updates your card on everyone\'s board live', async () => {
+    const h = await makeHackathon();
+    const [viewer, person] = await makeUsers(2);
+    await api().get(`/api/hackathons/${h._id}/me`).set(person.auth); // registers person in the hackathon
+    const s = await client(viewer.token);
+    await s.emitWithAck('board:subscribe', String(h._id));
+
+    const update = nextEvent(s, 'board:person', (p) => p.userId === person.id);
+    const res = await api().patch('/api/auth/me').set(person.auth).send({ skills: ['rust', 'go'] });
+    expect(res.status).toBe(200);
+    expect((await update).skills).toEqual(['rust', 'go']);
     s.close();
   });
 });

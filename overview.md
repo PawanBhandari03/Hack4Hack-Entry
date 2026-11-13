@@ -291,6 +291,10 @@ Also fixed: metric route labels lost their prefix on error responses (`/redeem` 
 
 **Interview Q: "What's the downside of optimistic concurrency?"** → Retry storms under contention. Show this story: measured it, explained it, fixed it with backoff + jitter + ordering, and proved it with the metric.
 
+### Step 23 — Small gaps closed
+- **Profile edits are now live:** `PATCH /api/auth/me` broadcasts the person's updated card to every board they're on (and refreshes their team page). Before, other users only saw new skills after a refresh. Test added (40 total).
+- **Suggestions explain themselves:** every response includes a `formula` object describing exactly how `score`, `skillScore` and `timezoneScore` are computed (requirement: "the scoring must be explained").
+
 ### Step 21 — Deploy guide
 `docs/DEPLOY.md`: Render (API, Singapore) → Vercel (client, `VITE_API_URL`) → set `CLIENT_ORIGIN` → verify + deployed load test. Waiting on Pawan's Render/Vercel accounts.
 
