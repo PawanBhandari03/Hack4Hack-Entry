@@ -2,13 +2,14 @@
  * Load test for the "looking for teammates" board.
  * Requirement: p95 < 200 ms on the board endpoint with 100 concurrent users.
  *
- * Three runs:
- *   1. Realistic  - 100 users, each requesting the board twice per second (200 req/s total)
- *   2. Saturation - 100 connections, zero think time, page 1 only (as fast as the server can go)
- *   3. Saturation - mix of page 1, page 2 (cursor), people tab, skill filter
+ * Four runs:
+ *   0. Virtual users - 100 k6-style users: request, wait for the answer, think 0.5–1.5 s (the requirement)
+ *   1. Burst         - all 100 connections fire at the same instant, twice per second (stress test)
+ *   2. Saturation    - 100 connections, zero think time, page 1 only (as fast as the server can go)
+ *   3. Saturation    - mix of page 1, page 2 (cursor), people tab, skill filter
  *
  *   TARGET=http://localhost:4000 node scripts/loadtest.js
- *   TARGET=https://<render-app>.onrender.com DURATION=60 node scripts/loadtest.js
+ *   TARGET=https://<api> DURATION=60 node scripts/loadtest.js
  *
  * autocannon reports p90/p97.5/p99 but NOT p95, so we record every response time ourselves
  * and compute exact percentiles. Results go to loadtest-results/<timestamp>.json and a summary is printed.

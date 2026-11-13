@@ -11,7 +11,8 @@
     "loadtest": "node scripts/loadtest.js",
     "verify": "node scripts/verify-integrity.js",
     "lint": "oxlint --deny-warnings src scripts tests",
-    "race-demo": "node scripts/race-demo.js"
+    "race-demo": "node scripts/race-demo.js",
+    "smoke": "node scripts/smoke.js"
   },
   "keywords": [],
   "author": "",
@@ -40,6 +41,6 @@
     "vitest": "^5.1.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": "22.x"
   }
 }

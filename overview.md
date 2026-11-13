@@ -319,7 +319,14 @@ Also fixed: metric route labels lost their prefix on error responses (`/redeem` 
 - **Interview Q: "What does 100 concurrent users mean in your test?"** → "Two models: 100 k6-style virtual users with think time (the realistic one — p95 12 ms on 1 vCPU), and 100 connections with zero think time (saturation — p95 ~150 ms on 1 vCPU, 91 ms on a full core). I also ran a synchronized burst as a stress test; that one needs horizontal scaling."
 
 ### Step 21 — Deploy guide
-`docs/DEPLOY.md`: Render (API, Singapore) → Vercel (client, `VITE_API_URL`) → set `CLIENT_ORIGIN` → verify + deployed load test. Waiting on Pawan's Render/Vercel accounts.
+`docs/DEPLOY.md`: API on Railway (or Render Starter) → Vercel (client, `VITE_API_URL`) → set `CLIENT_ORIGIN` → smoke test + deployed load test. Waiting on Pawan's accounts.
+
+### Step 26 — Deploy-readiness hardening (before we deploy together)
+- **`npm run smoke`** (`server/scripts/smoke.js`): a 5-second, read-only check against any deployment. It covers health, hackathon list, demo login, board teams/people, **CORS for the Vercel origin**, and a **real WebSocket** connection that subscribes to the board. Prints PASS/FAIL per check and exits 1 on failure.
+  - **Why:** the most common deploy bugs are configuration, not code: a wrong `CLIENT_ORIGIN` (CORS), a host that blocks WebSockets, or a DB that wasn't seeded. Each one gets a clear message telling us what to fix. Tested locally: all pass, and a wrong origin is caught.
+- **Pinned Node `22.x`** in `engines`, the same version CI tests. Hosts otherwise pick their own default, so "works in CI, breaks in prod" becomes possible.
+- **Build without dev deps** (documented). `mongodb-memory-server` is test-only and downloads ~600 MB of MongoDB on install. `NODE_ENV=production` / `--omit=dev` skips it, so builds stay fast.
+- **Interview angle:** "Before deploying I wrote a smoke test for the things that typically break *only* in production: CORS, WebSockets behind the host's proxy, and seeding."
 
 ---
 

@@ -58,8 +58,10 @@ npm run dev                 # http://localhost:5173 (uses VITE_API_URL, default 
 |---|---|
 | `npm test` | 43 API tests, including race, real-time, metrics and chaos tests (in-memory MongoDB replica set; no setup needed) |
 | `npm run seed` | Wipe and seed 10,000 users / 2,000 teams |
-| `npm run loadtest` | Realistic and saturation load tests, exact p95 (`TARGET=…` to point elsewhere) |
+| `npm run loadtest` | Virtual-user, burst and saturation load tests, exact p95 (`TARGET=…` to point elsewhere) |
 | `npm run verify` | Check every invariant (member counts, seats, one leader, no orphans) against the DB |
+| `npm run race-demo` | 50 real users race for the last seat over HTTP against any deployment (`TARGET=…`) |
+| `npm run smoke` | Read-only post-deploy check: health, login, board, CORS, WebSocket (`TARGET=… ORIGIN=…`) |
 | `npm run lint` | oxlint, zero warnings allowed |
 
 Browser tests (needs a running stack, e.g. `docker compose up`): `cd e2e && npm ci && npx playwright install chromium && BASE_URL=http://localhost:8080 npx playwright test`
