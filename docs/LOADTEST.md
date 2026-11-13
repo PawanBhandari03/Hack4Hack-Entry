@@ -37,7 +37,16 @@
 
 These were 10 s runs, with Docker Desktop's VM sharing the laptop's CPU with the load generator.
 
-**C. Deployed (Render, Singapore → Atlas Mumbai):** *to be added after deployment.*
+**C. Pre-deploy simulation of Render's FREE instance (0.1 CPU, 512 MB)** with `docker-compose.render-sim.yml`: ❌ [6-render-free-simulation-0.1cpu-FAILED.json](loadtest/6-render-free-simulation-0.1cpu-FAILED.json)
+
+| Run | Req/s | p50 | **p95** | Timeouts |
+|---|---:|---:|---:|---:|
+| Realistic 100 × 2 req/s | 46 | 603 ms | **1,392 ms** | 128 |
+| Saturation, page 1 | 42 | 298 ms | **1,493 ms** | 154 |
+
+Diagnosis: even the trivial `/health` endpoint only manages about 90–100 req/s at 0.1 CPU, with p97.5 above 2 s, because of CPU throttling. One-tenth of a CPU can't serve 100 concurrent users at p95 < 200 ms whatever the code does. **Decision:** host the API on an instance with at least ~0.5–1 vCPU (Railway shared vCPU, or Render Starter) rather than Render free. See [DEPLOY.md](DEPLOY.md).
+
+**D. Deployed:** *to be added after deployment.*
 
 Caveat: in A and B the load generator ran on the same machine as the API, so the two competed for CPU. The numbers are therefore pessimistic for the server, but they include no internet round-trip.
 
@@ -61,4 +70,4 @@ Caveat: in A and B the load generator ran on the same machine as the API, so the
 ## Known limits
 
 - **Atlas M0 caps DB-bound endpoints** (e.g. `/api/auth/me`) at about 100 req/s. A paid tier (M10+) removes this. It's an infrastructure limit, not a code one.
-- **Render free tier = 0.1 CPU.** Deployed throughput will be far lower than on a laptop. For real traffic, use a paid instance and run 2+ instances behind the load balancer. The cache is per instance, which is fine at this TTL. Socket.io would then need the Redis adapter.
+- **Render free tier = 0.1 CPU,** which is too little for the target (see §C). For real traffic, use at least one full vCPU and run 2+ instances behind the load balancer. The cache is per instance, which is fine at this TTL. Socket.io would then need the Redis adapter.

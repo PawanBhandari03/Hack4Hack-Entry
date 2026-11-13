@@ -1,0 +1,6 @@
+# Simulates Render's FREE instance (0.1 CPU, 512 MB) for the API so we can load-test before deploying:
+#   docker compose -f docker-compose.yml -f docker-compose.render-sim.yml up --build -d
+services:
+  api:
+    cpus: "0.1"
+    mem_limit: 512m

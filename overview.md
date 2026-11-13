@@ -297,6 +297,13 @@ Also fixed: metric route labels lost their prefix on error responses (`/redeem` 
 - **Profile edits are now live:** `PATCH /api/auth/me` broadcasts the person's updated card to every board they're on (and refreshes their team page). Before, other users only saw new skills after a refresh. Test added (40 total).
 - **Suggestions explain themselves:** every response includes a `formula` object describing exactly how `score`, `skillScore` and `timezoneScore` are computed (requirement: "the scoring must be explained").
 
+### Step 24 — Simulated Render FREE before deploying → it fails → host decision
+- `docker-compose.render-sim.yml` caps the API container at **0.1 CPU / 512 MB** (Render free).
+- Result: **FAIL** — ~45 req/s, realistic p95 **1,392 ms**, timeouts. Even `/health` (does nothing) maxes at ~90–100 req/s with multi-second tails: at 0.1 CPU the process is frozen ~90% of every 100 ms by CPU throttling. No code change can fix that.
+- **Decision (needs Pawan):** API on **Railway** (shared vCPU, Singapore, trial credit) or **Render Starter** (0.5 CPU, $7/mo). Frontend stays on Vercel (free, static). `docs/DEPLOY.md` rewritten: Railway first, Render Starter as alternative, post-deploy checklist (trust-proxy/rate-limit check, deployed load test, race demo, live URLs in README). `render.yaml` plan set to `starter`.
+- Recorded honestly in `docs/LOADTEST.md` §C with the raw JSON.
+- **Interview angle:** "I load-tested the hosting tier *before* deploying and found 0.1 CPU can't meet the SLO — so I sized the instance from data."
+
 ### Step 21 — Deploy guide
 `docs/DEPLOY.md`: Render (API, Singapore) → Vercel (client, `VITE_API_URL`) → set `CLIENT_ORIGIN` → verify + deployed load test. Waiting on Pawan's Render/Vercel accounts.
 

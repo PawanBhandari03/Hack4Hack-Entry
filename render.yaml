@@ -4,7 +4,7 @@ services:
     name: hack4hack-teams-api
     runtime: node
     region: singapore        # closest Render region to the Atlas cluster (AWS Mumbai, ap-south-1)
-    plan: free
+    plan: starter            # NOT free: 0.1 CPU fails the p95 target (docs/LOADTEST.md §C)
     rootDir: server
     buildCommand: npm ci --omit=dev
     startCommand: npm start
