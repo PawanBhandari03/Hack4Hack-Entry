@@ -70,3 +70,101 @@ Build a production-grade team-formation service for a hackathon with 10,000 part
   - `helmet`, `cors` – security headers, allowed origin for the React app
   - Dev: `vitest` + `supertest` (API tests), `mongodb-memory-server` (real Mongo in tests, as a replica set so transactions work), `autocannon` (load test)
 - Verified Atlas connection (≈330 ms). It is a **replica set**, which matters: **MongoDB transactions only work on replica sets**, and our race-proofing uses transactions.
+
+### Step 2 — Data model (`server/src/models/index.js`)
+| Collection | Purpose | Key indexes (and why) |
+|---|---|---|
+| `Hackathon` | Holds the rules: `minTeamSize`, `maxTeamSize` | `slug` unique |
+| `User` | Account: name, email, bcrypt hash, skills, timezone, `utcOffsetMinutes` | `email` unique |
+| `Participant` | A user's registration in ONE hackathon. `teamId: null` = no team. Has copies of name/skills/timezone so the board needs no joins. | `{hackathonId, userId}` **unique** → one row per person per hackathon |
+| `Team` | name, leader, `memberCount`, **`openSeats`**, skillsWanted, lookingForMembers | `{hackathonId, nameKey}` unique (no duplicate names); board index `{hackathonId, lookingForMembers, updatedAt, openSeats}` |
+| `Invite` | Invite codes — **only the SHA-256 hash is stored** | `codeHash` unique |
+| `JoinRequest` | Request → leader accepts/declines | **partial unique** `{teamId, userId}` where `status: pending` → can't have 2 pending requests to the same team |
+| `AuditLog` | who (`actorId`), what (`action`, `targetUserId`, `details`), when (`createdAt`) | `{teamId, createdAt}` |
+| `IdempotencyKey` | Stored responses for retried requests | `{userId, key}` unique, TTL 24 h |
+
+**Interview Q: Why store `openSeats` when you could compute `maxSize - memberCount`?**
+Because a normal update filter can't efficiently compare two fields, but it CAN atomically check `openSeats > 0`. Storing it turns "is there a seat? then take it" into **one atomic operation**.
+
+**Interview Q: Why a separate `Participant` collection instead of a `teamId` on `User`?**
+A user can join many hackathons. "One team per person per hackathon" becomes a simple rule on one document: `Participant.teamId` must be `null` to join.
+
+### Step 3 — How races are prevented (THE most important part)
+Files: `server/src/services/teamService.js` + `server/src/lib/txn.js`
+
+Every change runs in a **MongoDB transaction** and uses **conditional updates**:
+```js
+// claim the person: only if they're not in a team
+Participant.findOneAndUpdate({ hackathonId, userId, teamId: null }, { $set: { teamId } })
+// take the seat: only if a seat is open
+Team.findOneAndUpdate({ _id, openSeats: { $gt: 0 } }, { $inc: { openSeats: -1, memberCount: 1 } })
+```
+What happens when 50 people click "join" for the last seat at the same moment:
+1. All 50 transactions try to update the **same Team document**.
+2. MongoDB lets the first one write; the others get a **WriteConflict** (MongoDB never lets two transactions modify the same document at once).
+3. `session.withTransaction()` automatically **retries** the losers. On retry they read fresh data: `openSeats` is now `0`, the conditional update matches nothing → we throw `409 TEAM_FULL`.
+4. Result: exactly 1 winner, 49 × `TEAM_FULL`. Proven by `tests/race.test.js`.
+
+**Why a transaction and not just the atomic update?** Joining touches 3+ documents (Participant, Team, AuditLog, JoinRequests). Without a transaction a crash between them could leave "seat taken but person not in team". With a transaction it's all-or-nothing.
+
+**Why not a lock (Redis lock / mutex)?** Locks need extra infrastructure, can stay held if a process crashes, and an in-memory mutex doesn't work with more than one server instance. Optimistic concurrency in the DB works across any number of servers.
+
+Other races handled the same way:
+- **Same person joins 5 teams at once** → all write the same Participant doc → only one commits, the rest get `ALREADY_IN_TEAM`.
+- **10 accepts with 1 seat left** → request status update is conditional on `status: 'pending'`, seat is conditional on `openSeats > 0`.
+- **All members leave at once** → all write the same Team doc → serialised → team deleted exactly once, count never negative.
+- **Invite revoked while someone joins** → the join does `$inc uses` on the Invite doc inside the transaction, so it conflicts with the revoke instead of using a stale code.
+
+**Team rules implemented:**
+- Max size → `openSeats` check. Min size → `meetsMinimum` flag shown in UI/board (a team below the minimum is "forming").
+- One team per person → `teamId: null` condition + unique Participant row.
+- Invite codes expire (48 h, `INVITE_CODE_TTL_HOURS`); generating a new code revokes the old one.
+- Leader leaves → member with the earliest `joinedTeamAt` becomes leader (fair + deterministic).
+- Last member leaves → team deleted, invites revoked, pending requests cancelled.
+- Joining a team auto-cancels your other pending requests.
+
+### Step 4 — Idempotency (`server/src/middleware/idempotency.js`)
+Client sends `Idempotency-Key: <uuid>` (one per user action, reused on retries).
+1. We **insert the key first** (unique index) before doing any work.
+2. A retry while the first request is still running → insert fails → `409 REQUEST_IN_PROGRESS`.
+3. A retry after it finished → we **replay the saved response** (header `Idempotent-Replayed: true`); the work is not repeated.
+4. 5xx responses delete the key so the user can genuinely retry. A key stuck "in progress" > 60 s (server crashed) is reclaimed.
+5. **Second line of defence:** even without a key, the data model makes a double join impossible (`teamId: null` condition).
+
+### Step 5 — Security
+- **Auth:** JWT in the `Authorization: Bearer` header; passwords hashed with bcrypt. Login compares against a dummy hash when the email doesn't exist → same response time → can't discover which emails are registered.
+- **Leader-only actions** (accept/decline/remove/edit/invite/transfer) check `team.leaderId` **inside** the transaction.
+- **Invite codes:** 10 chars from a 32-letter alphabet = **50 bits of randomness** (`crypto.randomBytes`), stored only as a SHA-256 hash, **rate limited to 10 attempts / 15 min per user**. Brute force would need ~10^11 years.
+- "Code doesn't exist" and "code revoked" return the same error → attackers learn nothing.
+- **Validation:** every body/query/param goes through a `zod` schema (`middleware/validate.js`). Skills are lower-cased + de-duplicated; timezones must be real IANA names; JSON bodies limited to 20 kB.
+- `helmet` security headers, CORS restricted to the frontend origin, `trust proxy` set so rate limits see the real client IP behind Render's proxy.
+
+### Step 6 — Real-time (`server/src/socket.js`, `lib/realtime.js`)
+- Socket.io, authenticated with the same JWT.
+- Rooms: `hackathon:<id>` (board), `team:<id>` (members only), `user:<id>` (private notifications).
+- **Events are emitted only after the transaction commits** (services push events into a list; `runTxn` publishes after commit). If a transaction is rolled back, nobody hears about it.
+- On reconnect the client refetches via REST, so a missed event can't leave the screen wrong forever.
+
+### Step 7 — Teammate suggestions (`server/src/services/suggestionService.js`)
+`score = 100 × (0.7 × skillScore + 0.3 × timezoneScore)`
+- `skillScore` = share of the team's **missing** skills the candidate has (skills wanted minus skills members already have). Someone who only duplicates existing skills scores 0 → that's what "complementary" means.
+- `timezoneScore` = `1 − hoursApart / 12` (hours measured around the 24 h clock, so UTC+12 and UTC−11 are 1 h apart).
+- Team timezone = circular mean of the members' offsets.
+- Two modes: in a team → ranks people; solo → ranks teams. Each result includes a breakdown (matched skills, hours apart).
+- Why 70/30: skills decide whether the team can build at all; timezone only affects convenience.
+
+### Step 8 — Tests + CI
+- 36 tests, Vitest + Supertest, against a **real in-memory MongoDB replica set** (`mongodb-memory-server`) — same engine as Atlas, transactions included.
+- `tests/race.test.js`: 50-way last seat, 10 parallel accepts, 1 user × 5 teams, 10 parallel creates, 4 members leave at once.
+- Others: auth, validation, team rules, invite expiry/rate limit, join requests, idempotency, audit log, board pagination, suggestions, Socket.io live updates.
+- Ran the suite 4× in a row: all green (no flaky race tests).
+- GitHub Actions: `.github/workflows/ci.yml` runs `npm test` on every push.
+
+### Step 9 — Seed + load test
+- `npm run seed` → 10,000 users, 2,000 teams (5,067 in teams, 4,933 solo). ~70 s on Atlas. One bcrypt hash reused, `insertMany` in batches of 1000, deterministic random so every run is identical.
+- Demo logins: `demo1@hack4hack.dev` … `demo5@hack4hack.dev`, password `password123`.
+- `npm run loadtest` (autocannon, 100 connections). autocannon doesn't report p95, so the script records every response time and computes the exact p95 itself.
+- **First run FAILED: p95 = 1059 ms, only 113 req/s.** Investigation: `/health` did 4,900 req/s, so Node was fine. Cause: **Atlas free tier (M0) is throttled to ~100 operations/second**, and every board request did a DB lookup of the hackathon.
+- Fixes: (1) cache hackathon settings for 30 s; (2) board responses micro-cached for 1 s **and the promise itself is cached**, so 100 simultaneous requests share ONE DB query.
+- **Second run PASSED: p95 = 146 ms at 1,035 req/s** (page 1); p95 = 158 ms for a mix of page 2 / people / skill filter. 0 errors. (Load generator and server on the same laptop, DB on Atlas.)
+- **Interview Q: Isn't a cache "cheating" on freshness?** The 1 s cache only affects the first page load; every change is pushed instantly over WebSockets, and writes never read from the cache — all correctness checks happen inside the DB transaction.

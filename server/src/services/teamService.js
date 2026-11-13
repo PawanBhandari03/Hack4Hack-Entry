@@ -116,10 +116,20 @@ async function cancelPendingRequestsOfUser(session, events, hackathonId, userId)
   }
 }
 
+// Hackathon settings (name, min/max size) almost never change, but are needed on almost every request.
+// Caching them for 30 s removes one DB round-trip per request — important on Atlas' free tier,
+// which throttles at ~100 operations/second.
+const hackathonCache = new Map(); // id -> { at, value }
+const HACKATHON_TTL_MS = 30_000;
+
 export async function getHackathonOrThrow(hackathonId) {
   if (!mongoose.isValidObjectId(hackathonId)) throw notFound('HACKATHON_NOT_FOUND', 'Hackathon not found');
+  const key = String(hackathonId);
+  const hit = hackathonCache.get(key);
+  if (hit && Date.now() - hit.at < HACKATHON_TTL_MS) return hit.value;
   const h = await Hackathon.findById(hackathonId).lean();
   if (!h) throw notFound('HACKATHON_NOT_FOUND', 'Hackathon not found');
+  hackathonCache.set(key, { at: Date.now(), value: h });
   return h;
 }
 

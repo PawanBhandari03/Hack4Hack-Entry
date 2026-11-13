@@ -7,7 +7,8 @@
     "test": "vitest run",
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "seed": "node scripts/seed.js"
+    "seed": "node scripts/seed.js",
+    "loadtest": "node scripts/loadtest.js"
   },
   "keywords": [],
   "author": "",

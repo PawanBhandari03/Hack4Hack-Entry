@@ -1,0 +1,47 @@
+{
+  "at": "2026-11-13T12:45:29.640Z",
+  "runs": [
+    {
+      "name": "GET /board/teams (page 1)",
+      "target": "http://localhost:4000",
+      "connections": 100,
+      "durationSec": 20,
+      "requests": 2270,
+      "rps": 113.5,
+      "statuses": {
+        "200": 2270
+      },
+      "errors": 0,
+      "timeouts": 0,
+      "latencyMs": {
+        "p50": 981.4474,
+        "p90": 1046.1967,
+        "p95": 1058.9261,
+        "p99": 1362.8455,
+        "max": 2147.7401
+      },
+      "pass": false
+    },
+    {
+      "name": "Board mix: teams p1/p2 + people + skill filter",
+      "target": "http://localhost:4000",
+      "connections": 100,
+      "durationSec": 20,
+      "requests": 2069,
+      "rps": 103.5,
+      "statuses": {
+        "200": 2069
+      },
+      "errors": 0,
+      "timeouts": 0,
+      "latencyMs": {
+        "p50": 995.9987,
+        "p90": 1125.0624,
+        "p95": 1285.311,
+        "p99": 1541.8676,
+        "max": 1555.4361
+      },
+      "pass": false
+    }
+  ]
+}
