@@ -126,3 +126,66 @@ export async function listPeopleLooking(hackathonId, { cursor, limit = 20, skill
     return JSON.stringify({ items: items.map(personSummary), nextCursor });
   });
 }
+
+/**
+ * Headline numbers for the board's stats strip (teams, open seats, people looking, most-wanted skills).
+ * One aggregation per collection, using $facet so each runs as a single round-trip, and
+ * micro-cached like the board pages. Read-only and approximate by up to ~1 s, which is fine for a dashboard.
+ */
+export async function getBoardStats(hackathonId) {
+  await getHackathonOrThrow(hackathonId);
+  return cached(`stats:${hackathonId}`, async () => {
+    const hid = new mongoose.Types.ObjectId(hackathonId);
+    const [[t], [p]] = await Promise.all([
+      Team.aggregate([
+        { $match: { hackathonId: hid } },
+        {
+          $facet: {
+            totals: [
+              {
+                $group: {
+                  _id: null,
+                  teams: { $sum: 1 },
+                  members: { $sum: '$memberCount' },
+                  full: { $sum: { $cond: [{ $eq: ['$openSeats', 0] }, 1, 0] } },
+                  recruiting: { $sum: { $cond: [{ $and: [{ $gt: ['$openSeats', 0] }, '$lookingForMembers'] }, 1, 0] } },
+                  openSeats: { $sum: { $cond: ['$lookingForMembers', '$openSeats', 0] } },
+                },
+              },
+            ],
+            wanted: [
+              { $match: { lookingForMembers: true, openSeats: { $gt: 0 } } },
+              { $unwind: '$skillsWanted' },
+              { $group: { _id: '$skillsWanted', count: { $sum: 1 } } },
+              { $sort: { count: -1, _id: 1 } },
+              { $limit: 8 },
+            ],
+          },
+        },
+      ]),
+      Participant.aggregate([
+        { $match: { hackathonId: hid } },
+        {
+          $group: {
+            _id: null,
+            participants: { $sum: 1 },
+            solo: { $sum: { $cond: [{ $eq: ['$teamId', null] }, 1, 0] } },
+            looking: { $sum: { $cond: [{ $and: [{ $eq: ['$teamId', null] }, '$lookingForTeam'] }, 1, 0] } },
+          },
+        },
+      ]),
+    ]);
+    const totals = t.totals[0] ?? { teams: 0, members: 0, full: 0, recruiting: 0, openSeats: 0 };
+    return JSON.stringify({
+      teams: totals.teams,
+      fullTeams: totals.full,
+      recruitingTeams: totals.recruiting,
+      openSeats: totals.openSeats,
+      participants: p?.participants ?? 0,
+      inTeams: totals.members,
+      solo: p?.solo ?? 0,
+      lookingForTeam: p?.looking ?? 0,
+      mostWantedSkills: t.wanted.map((w) => ({ skill: w._id, teams: w.count })),
+    });
+  });
+}

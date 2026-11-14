@@ -328,6 +328,20 @@ Also fixed: metric route labels lost their prefix on error responses (`/redeem` 
 - **Build without dev deps** (documented). `mongodb-memory-server` is test-only and downloads ~600 MB of MongoDB on install. `NODE_ENV=production` / `--omit=dev` skips it, so builds stay fast.
 - **Interview angle:** "Before deploying I wrote a smoke test for the things that typically break *only* in production: CORS, WebSockets behind the host's proxy, and seeding."
 
+### Step 27 — UI redesign: "the hackathon's live classifieds" (14 Nov)
+Pawan found the old UI plain and pointed to **Broadsheet**, his own winning DOGFOOD 2026 project, as the style reference: newspaper look, data-rich, many cards. Similar, not a copy:
+- **Design language:** paper background, ink borders with offset "printed" shadows, serif headlines (Fraunces), readable body text (Atkinson Hyperlegible), mono metadata (Martian Mono). The fonts are **self-hosted** under `client/public/fonts` (open-font licence), so `docker compose up` stays fully offline. Our own accent is press blue, with marker yellow for live flashes. Dark mode is supported.
+- **Concept fits the problem:** a board of teams wanting people *is* a newspaper's classifieds. Team cards are "WANTED · 2 SEATS" ads with a status stamp (Forming / Ready / Full); people cards are "Seeking a team" with a monogram avatar.
+- **Board, data-rich:**
+  - The front-page lead story shows the countdown to team-formation close and a **most-wanted skills bar chart**; clicking a bar filters the classifieds.
+  - A **stats strip** shows teams recruiting, open seats, people looking, and % already in a team.
+  - Your status panel, the Matchmaker suggestions with the scoring formula shown, then the classifieds grid.
+- **New endpoint `GET /hackathons/:id/stats`:** two aggregations (Team with `$facet`, Participant), run in parallel and **micro-cached like the board**, so it costs about 2 DB queries per second at most. The client refetches it at most every 2 s when live board events arrive. +1 API test (44 total).
+- **Team page = "team dossier":** a big seat meter, leader, skills covered (x of y wanted), member timezones; members with avatars; join requests and the invite code in the sidebar; the activity log drawn as a timeline.
+- **Login:** a "Today's top story" pitch (race-proof / live / matchmaking) next to the form, with demo-account buttons for judges. **Profile:** a live preview of your card as teams will see it.
+- **Kept on purpose:** every label, role and ARIA attribute the Playwright tests use, so keyboard, phone and axe checks still apply. Checked with screenshots at 1366 px and 390 px: no horizontal scroll.
+- **Interview angle:** "I reused the design language from my previous winning project but adapted it to the domain: team formation reads naturally as classified ads, and the stats strip and skill chart make 10,000 seeded users feel real."
+
 ---
 
 ## 4. Interview cheat sheet (say these out loud until they feel natural)
@@ -397,6 +411,6 @@ Setup before recording: deployed app open in 2 browser windows side by side (nor
 | 1:30–2:40 | `teamService.js` → `addMemberInTxn`; `txn.js` | "The core idea: two conditional updates in one transaction: claim the person only if `teamId` is null, take the seat only if `openSeats > 0`. If 50 people race, MongoDB lets one transaction write the team document and aborts the others with a write conflict. They retry with backoff, see zero seats, and get TEAM_FULL." |
 | 2:40–3:20 | Terminal: `TARGET=<prod> npm run race-demo` → `49 × TEAM_FULL, 1 × joined, integrity OK` | "This is 50 real users hitting the last seat on the deployed app right now. Exactly one wins, and the integrity checker confirms counts and leaders are consistent." |
 | 3:20–3:50 | `/metrics` → `txn_retries_total`; mention the retry-storm story | "My first version used the driver's immediate retries: 1,010 retries for one race. Backoff with jitter and writing the hot document last brought it to 49." |
-| 3:50–4:20 | Actions tab (all green) + `docs/LOADTEST.md` table | "40 API tests including race and chaos tests, plus 5 Playwright browser tests including accessibility. Board p95 is 95 ms with 100 users. It first failed at 1 second; profiling found JWT verification was half the CPU." |
+| 3:50–4:20 | Actions tab (all green) + `docs/LOADTEST.md` table | "44 API tests including race and chaos tests, plus 5 Playwright browser tests including accessibility. Board p95 is 95 ms with 100 users. It first failed at 1 second; profiling found JWT verification was half the CPU." |
 | 4:20–4:50 | Phone-width window + Tab through the board | "Works on phones and with the keyboard alone. axe finds no serious violations." |
 | 4:50–5:00 | `docs/DESIGN.md` §4 | "With another week: Redis adapter to scale out, team finalization, refresh tokens. Thanks!" |

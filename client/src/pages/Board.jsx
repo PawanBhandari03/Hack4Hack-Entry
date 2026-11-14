@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { useApp } from '../appContext.js';
 import SkillInput from '../components/SkillInput.jsx';
-import { Chips, Seats, Spinner, Empty } from '../components/common.jsx';
+import { Avatar, Chips, Seats, Spinner, Empty, TeamStamp } from '../components/common.jsx';
 import { tzLabel } from '../lib/format.js';
 
 /* ------------------------------------------------------------------ */
@@ -21,7 +21,7 @@ function useLiveBoard(kind, hackathonId, skill) {
     async (after) => {
       const id = ++reqId.current;
       setLoading(true);
-      const qs = new URLSearchParams({ limit: '20' });
+      const qs = new URLSearchParams({ limit: '24' });
       if (skill) qs.set('skill', skill);
       if (after) qs.set('cursor', after);
       try {
@@ -85,7 +85,38 @@ function useLiveBoard(kind, hackathonId, skill) {
 
 const key = (i) => i.id ?? i.userId;
 
-/** "Team formation closes in 3d 4h" — the server enforces the deadline; this just shows it. */
+/** Headline numbers. Refetched (at most every 2 s) whenever the board changes. */
+function useStats(hackathonId) {
+  const { socket } = useApp();
+  const [stats, setStats] = useState(null);
+  useEffect(() => {
+    let timer = null;
+    let alive = true;
+    const load = () =>
+      api(`/api/hackathons/${hackathonId}/stats`)
+        .then((s) => alive && setStats(s))
+        .catch(() => {});
+    const soon = () => {
+      if (!timer) timer = setTimeout(() => ((timer = null), load()), 2000);
+    };
+    load();
+    socket?.on('board:team', soon);
+    socket?.on('board:team-removed', soon);
+    socket?.on('board:person', soon);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+      socket?.off('board:team', soon);
+      socket?.off('board:team-removed', soon);
+      socket?.off('board:person', soon);
+    };
+  }, [hackathonId, socket]);
+  return stats;
+}
+
+const fmt = (n) => (n == null ? '—' : n.toLocaleString('en-US'));
+
+/** Countdown to the team-formation deadline. The server enforces it; this just shows it. */
 function Deadline({ closesAt }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -95,18 +126,84 @@ function Deadline({ closesAt }) {
   if (!closesAt) return null;
   const ms = new Date(closesAt).getTime() - now;
   if (ms <= 0) return <p className="badge badge-danger">Team formation has closed</p>;
-  const d = Math.floor(ms / 86_400_000);
-  const h = Math.floor((ms % 86_400_000) / 3_600_000);
-  const m = Math.floor((ms % 3_600_000) / 60_000);
+  const parts = [
+    [Math.floor(ms / 86_400_000), 'days'],
+    [Math.floor((ms % 86_400_000) / 3_600_000), 'hours'],
+    [Math.floor((ms % 3_600_000) / 60_000), 'mins'],
+  ];
   return (
-    <p className="small">
-      <span className="muted">Team formation closes in </span>
-      <strong>
-        <time dateTime={new Date(closesAt).toISOString()} title={new Date(closesAt).toLocaleString()}>
-          {d > 0 ? `${d}d ${h}h` : `${h}h ${m}m`}
-        </time>
-      </strong>
-    </p>
+    <div>
+      <p className="kicker plain" id="deadline-h">
+        Team formation closes in
+      </p>
+      <div className="countdown" role="timer" aria-labelledby="deadline-h">
+        {parts.map(([v, unit]) => (
+          <span key={unit}>
+            <b>{String(v).padStart(2, '0')}</b>
+            <small>{unit}</small>
+          </span>
+        ))}
+      </div>
+      <p className="tz">
+        <time dateTime={new Date(closesAt).toISOString()}>{new Date(closesAt).toLocaleString()}</time>
+      </p>
+    </div>
+  );
+}
+
+function MostWanted({ stats, skill, onPick }) {
+  const list = stats?.mostWantedSkills ?? [];
+  const max = Math.max(1, ...list.map((s) => s.teams));
+  return (
+    <section aria-labelledby="wanted-h">
+      <p className="kicker" id="wanted-h">
+        Most wanted skills
+      </p>
+      <p className="small muted">Open teams asking for each skill. Tap one to filter the classifieds.</p>
+      {!stats ? (
+        <Spinner />
+      ) : list.length === 0 ? (
+        <Empty>No open teams yet.</Empty>
+      ) : (
+        <ul className="bars">
+          {list.map((s) => (
+            <li key={s.skill}>
+              <button type="button" aria-pressed={skill === s.skill} onClick={() => onPick(skill === s.skill ? '' : s.skill)}>
+                <span className="bar-label">{s.skill}</span>
+                <span className="bar-track" aria-hidden="true">
+                  <span className="bar-fill" style={{ width: `${(s.teams / max) * 100}%` }} />
+                </span>
+                <span className="bar-num">
+                  {fmt(s.teams)}
+                  <span className="sr-only"> teams</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function StatsStrip({ stats }) {
+  const pctInTeams = stats?.participants ? Math.round((stats.inTeams / stats.participants) * 100) : null;
+  const items = [
+    { big: fmt(stats?.recruitingTeams), label: 'Teams recruiting', sub: stats ? `of ${fmt(stats.teams)} teams` : '' },
+    { big: fmt(stats?.openSeats), label: 'Open seats', sub: stats ? `${fmt(stats.fullTeams)} teams full` : '' },
+    { big: fmt(stats?.lookingForTeam), label: 'People looking', sub: stats ? `${fmt(stats.solo)} without a team` : '' },
+    { big: pctInTeams == null ? '—' : `${pctInTeams}%`, label: 'Already in a team', sub: stats ? `${fmt(stats.inTeams)} of ${fmt(stats.participants)}` : '' },
+  ];
+  return (
+    <ul className="stats" aria-label="Hackathon at a glance">
+      {items.map((s) => (
+        <li key={s.label} className="stat">
+          <span className="big">{s.big}</span>
+          <span className="label">{s.label}</span>
+          <span className="sub">{s.sub}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -125,19 +222,20 @@ function MyStatus() {
   if (mine.team) {
     const t = mine.team;
     return (
-      <section className="card status-card" aria-labelledby="my-team-h">
-        <div>
-          <p className="eyebrow">Your team</p>
-          <h2 id="my-team-h">{t.name}</h2>
-          <p className="muted">
-            {mine.me.role === 'leader' ? 'You are the leader.' : 'You are a member.'}{' '}
-            {t.meetsMinimum ? 'Team meets the minimum size.' : `Needs ${t.minSize - t.memberCount} more to reach the minimum.`}
-          </p>
+      <section className="panel accent" aria-labelledby="my-team-h">
+        <div className="row-between">
+          <p className="kicker">Your team</p>
+          <TeamStamp team={t} />
         </div>
-        <div className="status-actions">
-          <Seats memberCount={t.memberCount} maxSize={t.maxSize} />
+        <h2 id="my-team-h">{t.name}</h2>
+        <p className="muted">
+          {mine.me.role === 'leader' ? 'You lead this team.' : 'You are a member.'}{' '}
+          {t.meetsMinimum ? 'It meets the minimum size.' : `It needs ${t.minSize - t.memberCount} more to reach the minimum.`}
+        </p>
+        <div className="row-between" style={{ marginTop: 16 }}>
+          <Seats memberCount={t.memberCount} maxSize={t.maxSize} large />
           <Link className="btn btn-primary" to={`/teams/${t.id}`}>
-            Open team page
+            Open team page →
           </Link>
         </div>
       </section>
@@ -184,46 +282,50 @@ function MyStatus() {
   };
 
   return (
-    <section className="card status-card stack" aria-labelledby="no-team-h">
+    <section className="panel accent stack" aria-labelledby="no-team-h">
       <div className="row-between">
         <div>
-          <p className="eyebrow">You're not in a team yet</p>
-          <h2 id="no-team-h">Find your people</h2>
+          <p className="kicker">You're not in a team yet</p>
+          <h2 id="no-team-h" style={{ margin: 0 }}>
+            Find your people
+          </h2>
         </div>
         <label className="switch">
           <input type="checkbox" checked={mine.me.lookingForTeam} onChange={toggleLooking} />
-          <span>Show me on the board</span>
+          <span>List me in the classifieds</span>
         </label>
       </div>
 
-      <div className="grid-2">
-        <form onSubmit={redeem} className="inline-form" aria-label="Join with invite code">
-          <label htmlFor="code">Have an invite code?</label>
-          <div className="row">
-            <input
-              id="code"
-              placeholder="ABCDE-12345"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              autoComplete="off"
-              spellCheck="false"
-              className="mono"
-            />
-            <button className="btn btn-primary" disabled={busy || code.trim().length < 10}>
-              Join
-            </button>
-          </div>
-        </form>
-        <div className="inline-form">
-          <span className="label-like">Or start your own</span>
-          <button className="btn" aria-expanded={showCreate} aria-controls="create-form" onClick={() => setShowCreate((s) => !s)}>
-            {showCreate ? 'Cancel' : 'Create a team'}
+      <form onSubmit={redeem} className="field" aria-label="Join with invite code">
+        <label htmlFor="code">Have an invite code?</label>
+        <div className="input-row">
+          <input
+            id="code"
+            placeholder="ABCDE-12345"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            autoComplete="off"
+            spellCheck="false"
+            className="code-input"
+          />
+          <button className="btn btn-primary" disabled={busy || code.trim().length < 10}>
+            Join
           </button>
         </div>
+        <span className="hint">Codes join you instantly. No approval needed.</span>
+      </form>
+
+      <p className="or-rule">or</p>
+
+      <div className="row-between">
+        <span className="small muted">Start your own team and recruit from the board.</span>
+        <button className="btn btn-ghost" aria-expanded={showCreate} aria-controls="create-form" onClick={() => setShowCreate((s) => !s)}>
+          {showCreate ? 'Cancel' : 'Create a team'}
+        </button>
       </div>
 
       {showCreate && (
-        <form id="create-form" onSubmit={create} className="stack">
+        <form id="create-form" onSubmit={create} className="stack-sm">
           <div className="field">
             <label htmlFor="tname">Team name</label>
             <input id="tname" required minLength={2} maxLength={50} value={team.name} onChange={(e) => setTeam({ ...team, name: e.target.value })} />
@@ -241,13 +343,13 @@ function MyStatus() {
 
       {mine.pendingRequests?.length > 0 && (
         <div>
-          <h3 className="h-sm">Your pending requests</h3>
+          <p className="kicker plain">Your pending requests</p>
           <ul className="list">
             {mine.pendingRequests.map((r) => (
-              <li key={r.id} className="row-between list-row">
+              <li key={r.id} className="row-between">
                 <Link to={`/teams/${r.teamId}`}>{r.teamName}</Link>
                 <button
-                  className="btn btn-ghost btn-sm"
+                  className="btn btn-text"
                   onClick={async () => {
                     try {
                       await api(`/api/requests/${r.id}/cancel`, { method: 'POST' });
@@ -257,7 +359,7 @@ function MyStatus() {
                     }
                   }}
                 >
-                  Cancel
+                  Cancel request
                 </button>
               </li>
             ))}
@@ -280,13 +382,14 @@ function Suggestions() {
 
   if (!data?.items?.length) return null;
   return (
-    <section className="card" aria-labelledby="sugg-h">
-      <h2 id="sugg-h" className="h-sm">
-        {data.mode === 'people' ? 'Suggested teammates' : 'Teams that need your skills'}
+    <section className="panel" aria-labelledby="sugg-h">
+      <p className="kicker">Matchmaker</p>
+      <h2 id="sugg-h" className="panel-title">
+        {data.mode === 'people' ? 'Suggested teammates' : 'Teams that need you'}
       </h2>
-      <p className="muted small">
-        Score = {Math.round(data.weights.skills * 100)}% complementary skills + {Math.round(data.weights.timezone * 100)}% timezone overlap
-        {data.neededSkills?.length ? ` · Your team still needs: ${data.neededSkills.join(', ')}` : ''}
+      <p className="formula">
+        score = {Math.round(data.weights.skills * 100)}% skills they need + {Math.round(data.weights.timezone * 100)}% timezone overlap
+        {data.neededSkills?.length ? ` · still needed: ${data.neededSkills.join(', ')}` : ''}
       </p>
       <ol className="sugg-list">
         {data.items.slice(0, 5).map((s) => {
@@ -298,7 +401,13 @@ function Suggestions() {
                 {s.score}
               </span>
               <div className="grow">
-                {href ? <Link to={href}>{label}</Link> : <strong>{label}</strong>}
+                {href ? (
+                  <Link to={href}>
+                    <strong>{label}</strong>
+                  </Link>
+                ) : (
+                  <strong>{label}</strong>
+                )}
                 <div className="muted small">
                   {s.breakdown.matchedSkills.length ? `brings ${s.breakdown.matchedSkills.join(', ')}` : 'no missing skills covered'} ·{' '}
                   {s.breakdown.hoursApart}h apart
@@ -329,44 +438,65 @@ function TeamCard({ t, flash, canRequest }) {
   };
 
   return (
-    <li className={`card item ${flash ? 'flash' : ''}`}>
-      <div className="row-between">
-        <h3 className="item-title">
-          <Link to={`/teams/${t.id}`}>{t.name}</Link>
-        </h3>
-        <Seats memberCount={t.memberCount} maxSize={t.maxSize} />
+    <li className={`ad ${flash ? 'flash' : ''}`}>
+      <div className="ad-top">
+        <span className="kicker">
+          Wanted · {t.openSeats} seat{t.openSeats === 1 ? '' : 's'}
+        </span>
+        <TeamStamp team={t} />
       </div>
-      {t.description && <p className="muted clamp">{t.description}</p>}
+      <h3>
+        <Link to={`/teams/${t.id}`}>{t.name}</Link>
+      </h3>
+      {t.description && <p className="ad-body clamp">{t.description}</p>}
       {t.skillsWanted.length > 0 && (
-        <div className="row small">
-          <span className="muted">Looking for</span>
-          <Chips items={t.skillsWanted} />
+        <div>
+          <p className="ad-label">Looking for</p>
+          <Chips items={t.skillsWanted} variant="chip-want" label="Skills wanted" />
         </div>
       )}
-      {canRequest && (
-        <button className="btn btn-sm" onClick={request} disabled={requested} aria-label={`Request to join ${t.name}`}>
-          {requested ? 'Requested ✓' : 'Request to join'}
-        </button>
-      )}
+      <div className="ad-foot">
+        <Seats memberCount={t.memberCount} maxSize={t.maxSize} />
+        {canRequest && (
+          <button className="btn btn-sm" onClick={request} disabled={requested} aria-label={`Request to join ${t.name}`}>
+            {requested ? 'Requested ✓' : 'Request to join'}
+          </button>
+        )}
+      </div>
     </li>
   );
 }
 
 function PersonCard({ p, flash }) {
   return (
-    <li className={`card item ${flash ? 'flash' : ''}`}>
-      <div className="row-between">
-        <h3 className="item-title">{p.name}</h3>
-        <span className="muted small">{tzLabel(p.timezone)}</span>
+    <li className={`ad ${flash ? 'flash' : ''}`}>
+      <div className="ad-top">
+        <span className="kicker">Seeking a team</span>
+        <span className="stamp stamp-green">Available</span>
       </div>
-      <Chips items={p.skills} />
+      <div className="person-head">
+        <Avatar name={p.name} />
+        <div className="grow">
+          <h3>{p.name}</h3>
+          <span className="tz">{tzLabel(p.timezone)}</span>
+        </div>
+      </div>
+      {p.bio && <p className="ad-body clamp clamp-2">{p.bio}</p>}
+      <div className="ad-foot">
+        <Chips items={p.skills} />
+      </div>
     </li>
   );
 }
 
 export default function Board() {
   const { hackathon } = useApp();
-  if (!hackathon) return <main id="main" className="container"><Empty>No hackathon found. Is the API running?</Empty></main>;
+  if (!hackathon)
+    return (
+      <main id="main" className="page wrap">
+        <Empty>No hackathon found. Is the API running?</Empty>
+      </main>
+    );
   return <BoardInner hackathon={hackathon} />;
 }
 
@@ -376,31 +506,58 @@ function BoardInner({ hackathon }) {
   const [skill, setSkill] = useState('');
   const [skillInput, setSkillInput] = useState('');
   const board = useLiveBoard(tab, hackathon.id, skill);
+  const stats = useStats(hackathon.id);
   const canRequest = mine && !mine.team;
 
+  const pickSkill = (s) => {
+    setSkill(s);
+    setSkillInput(s);
+    setTab('teams');
+    document.getElementById('classifieds-h')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   const tabs = [
-    { id: 'teams', label: 'Teams with open seats' },
-    { id: 'people', label: 'People looking for a team' },
+    { id: 'teams', label: 'Teams with open seats', count: stats?.recruitingTeams },
+    { id: 'people', label: 'People looking for a team', count: stats?.lookingForTeam },
   ];
 
   return (
-    <main id="main" className="container stack">
-      <div>
-        <h1>{hackathon.name}</h1>
-        <p className="muted">
-          Teams of {hackathon.minTeamSize}–{hackathon.maxTeamSize}. Everything on this page updates live.
-        </p>
-        <Deadline closesAt={hackathon.teamFormationClosesAt} />
+    <main id="main" className="page wrap stack">
+      <section className="lead" aria-labelledby="hack-h">
+        <div>
+          <p className="kicker">Front page · Team formation</p>
+          <h1 id="hack-h">{hackathon.name}</h1>
+          <p className="deck">
+            {hackathon.description ||
+              `Teams of ${hackathon.minTeamSize} to ${hackathon.maxTeamSize}. Every seat is claimed in a transaction, so the last spot goes to exactly one person.`}
+          </p>
+          <div className="row" style={{ margin: '16px 0 18px' }}>
+            <span className="pill pill-accent">
+              Teams of {hackathon.minTeamSize}–{hackathon.maxTeamSize}
+            </span>
+            <span className="pill pill-green">Updates live</span>
+            <span className="pill pill-amber">One team per person</span>
+          </div>
+          <Deadline closesAt={hackathon.teamFormationClosesAt} />
+        </div>
+        <MostWanted stats={stats} skill={skill} onPick={pickSkill} />
+      </section>
+
+      <StatsStrip stats={stats} />
+
+      <div className="split">
+        <MyStatus />
+        <div className="sidebar">
+          <Suggestions />
+        </div>
       </div>
 
-      <MyStatus />
-      <Suggestions />
-
-      <section aria-labelledby="board-h" className="stack">
-        <h2 id="board-h" className="sr-only">
-          Looking for teammates board
-        </h2>
-        <div className="row-between wrap">
+      <section aria-labelledby="classifieds-h">
+        <div className="section-head">
+          <h2 id="classifieds-h">The Classifieds</h2>
+          <span className="tz">Newest first · changes appear without reloading</span>
+        </div>
+        <div className="board-controls">
           <div role="tablist" aria-label="Board" className="tabs">
             {tabs.map((t) => (
               <button
@@ -421,11 +578,16 @@ function BoardInner({ hackathon }) {
                 }}
               >
                 {t.label}
+                {t.count != null && (
+                  <span className="count" aria-hidden="true">
+                    {fmt(t.count)}
+                  </span>
+                )}
               </button>
             ))}
           </div>
           <form
-            className="row"
+            className="filter"
             role="search"
             onSubmit={(e) => {
               e.preventDefault();
@@ -436,11 +598,11 @@ function BoardInner({ hackathon }) {
               Filter by skill
             </label>
             <input id="skill-filter" placeholder="Filter by skill, e.g. react" value={skillInput} onChange={(e) => setSkillInput(e.target.value)} />
-            <button className="btn">Filter</button>
+            <button className="btn btn-sm">Filter</button>
             {skill && (
               <button
                 type="button"
-                className="btn btn-ghost"
+                className="btn btn-sm btn-ghost"
                 onClick={() => {
                   setSkill('');
                   setSkillInput('');
@@ -451,10 +613,11 @@ function BoardInner({ hackathon }) {
             )}
           </form>
         </div>
+        {skill && <p className="filter-note">Filtered by skill: “{skill}”</p>}
 
         <div id="board-panel" role="tabpanel" aria-labelledby={`tab-${tab}`} aria-busy={board.loading}>
-          {!board.loading && board.items.length === 0 && <Empty>Nothing here yet.</Empty>}
-          <ul className="grid-cards">
+          {!board.loading && board.items.length === 0 && <Empty>Nothing here yet. Check back soon, this page updates by itself.</Empty>}
+          <ul className="ads">
             {board.items.map((i) =>
               tab === 'teams' ? (
                 <TeamCard key={i.id} t={i} flash={board.flash[i.id]} canRequest={canRequest} />
@@ -466,7 +629,7 @@ function BoardInner({ hackathon }) {
           {board.loading && <Spinner />}
           {board.hasMore && !board.loading && (
             <div className="center">
-              <button className="btn" onClick={board.loadMore}>
+              <button className="btn btn-ghost" onClick={board.loadMore}>
                 Load more
               </button>
             </div>

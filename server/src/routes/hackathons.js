@@ -47,6 +47,10 @@ router.get('/:hackathonId/board/people', hp, validate({ query: schemas.boardQuer
   res.type('json').send(await board.listPeopleLooking(req.params.hackathonId, req.validQuery));
 });
 
+router.get('/:hackathonId/stats', hp, async (req, res) => {
+  res.type('json').send(await board.getBoardStats(req.params.hackathonId));
+});
+
 router.get('/:hackathonId/suggestions', hp, async (req, res) => {
   res.json(await getSuggestions(req.params.hackathonId, req.userId));
 });

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { useApp } from '../appContext.js';
 import SkillInput from '../components/SkillInput.jsx';
-import { Chips, Seats, Spinner, Empty } from '../components/common.jsx';
+import { Avatar, Chips, Seats, Spinner, Empty, TeamStamp } from '../components/common.jsx';
 import { tzLabel } from '../lib/format.js';
 
 const ACTION_TEXT = {
@@ -33,7 +33,7 @@ function AuditLog({ teamId, version }) {
       {items.map((a) => (
         <li key={a.id}>
           <time dateTime={a.at}>{new Date(a.at).toLocaleString()}</time>
-          <span>
+          <span className="small">
             <strong>{a.actorName}</strong> {ACTION_TEXT[a.action] ?? a.action}
             {a.targetName && a.targetUserId !== a.actorId && <strong> {a.targetName}</strong>}
             {a.action === 'MEMBER_JOINED' && a.details?.via && <span className="muted"> (via {a.details.via})</span>}
@@ -226,9 +226,16 @@ export default function TeamPage() {
 
   if (error) {
     return (
-      <main id="main" className="container">
-        <Empty>{error.code === 'TEAM_NOT_FOUND' ? 'This team no longer exists.' : 'Could not load this team.'}</Empty>
-        <Link to="/">← Back to the board</Link>
+      <main id="main" className="page wrap stack">
+        <div className="panel alert">
+          <h1>{error.code === 'TEAM_NOT_FOUND' ? 'This team no longer exists' : 'Could not load this team'}</h1>
+          <p className="muted">
+            {error.code === 'TEAM_NOT_FOUND' ? 'Teams are deleted automatically when their last member leaves.' : 'Please try again.'}
+          </p>
+        </div>
+        <Link to="/" className="back">
+          ← Back to the board
+        </Link>
       </main>
     );
   }
@@ -236,155 +243,194 @@ export default function TeamPage() {
 
   const { team, members, isMember, isLeader, pendingRequests = [], myPendingRequest } = data;
   const inOtherTeam = mine?.team && mine.team.id !== team.id;
+  const leader = members.find((m) => m.role === 'leader');
+  const covered = team.skillsWanted.filter((s) => members.some((m) => m.skills.includes(s)));
+  const zones = [...new Set(members.map((m) => tzLabel(m.timezone)))];
 
   return (
-    <main id="main" className="container stack">
-      <Link to="/" className="muted small">
-        ← Board
+    <main id="main" className="page wrap stack">
+      <Link to="/" className="back">
+        ← The classifieds
       </Link>
-      <section className="card stack" aria-labelledby="team-h">
-        <div className="row-between wrap">
-          <div>
-            <h1 id="team-h">{team.name}</h1>
-            <p className="muted">
-              {team.meetsMinimum ? 'Meets the minimum team size' : `Forming — needs ${team.minSize - team.memberCount} more to reach the minimum of ${team.minSize}`}
-              {!team.lookingForMembers && ' · Not recruiting'}
-            </p>
-          </div>
-          <Seats memberCount={team.memberCount} maxSize={team.maxSize} />
-        </div>
-        {editing ? (
-          <EditTeam
-            team={team}
-            onDone={() => {
-              setEditing(false);
-              load();
-            }}
-          />
-        ) : (
-          <>
-            {team.description && <p>{team.description}</p>}
-            {team.skillsWanted.length > 0 && (
-              <div className="row small">
-                <span className="muted">Looking for</span>
-                <Chips items={team.skillsWanted} />
-              </div>
-            )}
-          </>
-        )}
 
-        <div className="row wrap">
-          {!isMember && !inOtherTeam && team.openSeats > 0 && team.lookingForMembers && (
-            myPendingRequest ? (
-              <button
-                className="btn"
-                disabled={!!pendingAction}
-                onClick={() => run('cancel', () => api(`/api/requests/${myPendingRequest.id}/cancel`, { method: 'POST' }))}
-              >
-                Cancel my request
-              </button>
-            ) : (
-              <button
-                className="btn btn-primary"
-                disabled={!!pendingAction}
-                onClick={() => run('request', () => api(`/api/teams/${team.id}/requests`, { method: 'POST', body: {} }), () => toast('Request sent', 'success'))}
-              >
-                Request to join
-              </button>
-            )
-          )}
-          {!isMember && team.openSeats === 0 && <span className="badge">Team is full</span>}
-          {isLeader && !editing && (
+      <section className="lead" aria-labelledby="team-h">
+        <div>
+          <div className="row-between">
+            <p className="kicker">Team dossier</p>
+            <TeamStamp team={team} />
+          </div>
+          <h1 id="team-h">{team.name}</h1>
+          {editing ? (
+            <EditTeam
+              team={team}
+              onDone={() => {
+                setEditing(false);
+                load();
+              }}
+            />
+          ) : (
             <>
-              <button className="btn btn-sm" onClick={() => setEditing(true)}>
-                Edit team
-              </button>
-              <button
-                className="btn btn-sm"
-                onClick={() => run('recruit', () => api(`/api/teams/${team.id}`, { method: 'PATCH', body: { lookingForMembers: !team.lookingForMembers } }))}
-              >
-                {team.lookingForMembers ? 'Stop recruiting' : 'Start recruiting'}
-              </button>
+              <p className="deck">{team.description || 'No description yet.'}</p>
+              {team.skillsWanted.length > 0 && (
+                <div style={{ marginTop: 16 }}>
+                  <p className="ad-label">Looking for</p>
+                  <Chips items={team.skillsWanted} variant="chip-want" label="Skills wanted" />
+                </div>
+              )}
             </>
           )}
-          {isMember && (
-            <button
-              className="btn btn-danger btn-sm"
-              disabled={!!pendingAction}
-              onClick={() => {
-                const last = team.memberCount === 1;
-                const msg = last
-                  ? 'You are the last member. Leaving will DELETE the team. Continue?'
-                  : isLeader
-                    ? 'Leadership will pass to the longest-standing member. Leave the team?'
-                    : 'Leave this team?';
-                if (!window.confirm(msg)) return;
-                run('leave', () => api(`/api/teams/${team.id}/leave`, { method: 'POST' }), () => navigate('/'));
-              }}
-            >
-              Leave team
-            </button>
-          )}
+
+          <div className="actions" style={{ marginTop: 22 }}>
+            {!isMember && !inOtherTeam && team.openSeats > 0 && team.lookingForMembers && (
+              myPendingRequest ? (
+                <button
+                  className="btn btn-ghost"
+                  disabled={!!pendingAction}
+                  onClick={() => run('cancel', () => api(`/api/requests/${myPendingRequest.id}/cancel`, { method: 'POST' }))}
+                >
+                  Cancel my request
+                </button>
+              ) : (
+                <button
+                  className="btn btn-primary"
+                  disabled={!!pendingAction}
+                  onClick={() => run('request', () => api(`/api/teams/${team.id}/requests`, { method: 'POST', body: {} }), () => toast('Request sent', 'success'))}
+                >
+                  Request to join
+                </button>
+              )
+            )}
+            {!isMember && inOtherTeam && <span className="pill pill-amber">You are already in another team</span>}
+            {isLeader && !editing && (
+              <>
+                <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>
+                  Edit team
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => run('recruit', () => api(`/api/teams/${team.id}`, { method: 'PATCH', body: { lookingForMembers: !team.lookingForMembers } }))}
+                >
+                  {team.lookingForMembers ? 'Stop recruiting' : 'Start recruiting'}
+                </button>
+              </>
+            )}
+            {isMember && (
+              <button
+                className="btn btn-danger btn-sm"
+                disabled={!!pendingAction}
+                onClick={() => {
+                  const last = team.memberCount === 1;
+                  const msg = last
+                    ? 'You are the last member. Leaving will DELETE the team. Continue?'
+                    : isLeader
+                      ? 'Leadership will pass to the longest-standing member. Leave the team?'
+                      : 'Leave this team?';
+                  if (!window.confirm(msg)) return;
+                  run('leave', () => api(`/api/teams/${team.id}/leave`, { method: 'POST' }), () => navigate('/'));
+                }}
+              >
+                Leave team
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <p className="kicker plain">Roster</p>
+          <Seats memberCount={team.memberCount} maxSize={team.maxSize} large />
+          <p className="small" style={{ margin: '10px 0 18px' }}>
+            {team.openSeats === 0
+              ? 'Every seat is taken.'
+              : team.meetsMinimum
+                ? `Meets the minimum. ${team.openSeats} seat${team.openSeats === 1 ? '' : 's'} left.`
+                : `Forming: needs ${team.minSize - team.memberCount} more to reach the minimum of ${team.minSize}.`}
+            {!team.lookingForMembers && ' Not recruiting.'}
+          </p>
+          <dl className="dl">
+            <dt>Leader</dt>
+            <dd>{leader?.name ?? '—'}</dd>
+            <dt>Team size</dt>
+            <dd>
+              {team.minSize}–{team.maxSize} people
+            </dd>
+            <dt>Skills covered</dt>
+            <dd>{team.skillsWanted.length ? `${covered.length} of ${team.skillsWanted.length} wanted` : 'Nothing listed'}</dd>
+            <dt>Timezones</dt>
+            <dd>{zones.join(' · ')}</dd>
+          </dl>
         </div>
       </section>
 
-      <div className="grid-2 align-start">
-        <section className="card stack" aria-labelledby="members-h">
-          <h2 id="members-h" className="h-sm">
-            Members
-          </h2>
+      <div className="split">
+        <section className="panel" aria-labelledby="members-h">
+          <h2 id="members-h">Members</h2>
           <ul className="list">
             {members.map((m) => (
-              <li key={m.userId} className="list-row stack-sm">
-                <div className="row-between wrap">
-                  <div>
-                    <strong>{m.name}</strong> {m.role === 'leader' && <span className="badge badge-accent">Leader</span>}
-                    {m.userId === user.id && <span className="muted small"> (you)</span>}
-                    <div className="muted small">{tzLabel(m.timezone)}</div>
-                  </div>
-                  {isLeader && m.userId !== user.id && (
-                    <div className="row">
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        onClick={() =>
-                          window.confirm(`Make ${m.name} the leader? You will become a regular member.`) &&
-                          run('transfer', () => api(`/api/teams/${team.id}/leader`, { method: 'POST', body: { userId: m.userId } }))
-                        }
-                      >
-                        Make leader
-                      </button>
-                      <button
-                        className="btn btn-danger btn-sm"
-                        onClick={() =>
-                          window.confirm(`Remove ${m.name} from the team?`) &&
-                          run('remove', () => api(`/api/teams/${team.id}/members/${m.userId}`, { method: 'DELETE' }))
-                        }
-                      >
-                        Remove
-                      </button>
+              <li key={m.userId}>
+                <div className="member">
+                  <Avatar name={m.name} />
+                  <div className="grow stack-sm">
+                    <div className="row-between">
+                      <div>
+                        <span className="member-name">{m.name}</span> {m.role === 'leader' && <span className="badge badge-accent">Leader</span>}
+                        {m.userId === user.id && <span className="muted small"> (you)</span>}
+                        <div className="tz">{tzLabel(m.timezone)}</div>
+                      </div>
+                      {isLeader && m.userId !== user.id && (
+                        <div className="row">
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={() =>
+                              window.confirm(`Make ${m.name} the leader? You will become a regular member.`) &&
+                              run('transfer', () => api(`/api/teams/${team.id}/leader`, { method: 'POST', body: { userId: m.userId } }))
+                            }
+                          >
+                            Make leader
+                          </button>
+                          <button
+                            className="btn btn-danger btn-sm"
+                            onClick={() =>
+                              window.confirm(`Remove ${m.name} from the team?`) &&
+                              run('remove', () => api(`/api/teams/${team.id}/members/${m.userId}`, { method: 'DELETE' }))
+                            }
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  )}
+                    <Chips items={m.skills} highlight={team.skillsWanted} />
+                  </div>
                 </div>
-                <Chips items={m.skills} highlight={team.skillsWanted} />
               </li>
             ))}
           </ul>
+          {team.skillsWanted.length > 0 && (
+            <p className="hint" style={{ marginTop: 8 }}>
+              Highlighted skills are ones the team asked for.
+            </p>
+          )}
         </section>
 
-        {isLeader && (
-          <div className="stack">
-            <section className="card stack" aria-labelledby="req-h">
-              <h2 id="req-h" className="h-sm">
-                Join requests {pendingRequests.length > 0 && <span className="badge badge-accent">{pendingRequests.length}</span>}
-              </h2>
-              {pendingRequests.length === 0 ? (
-                <Empty>No pending requests.</Empty>
-              ) : (
-                <ul className="list">
-                  {pendingRequests.map((r) => (
-                    <li key={r.id} className="list-row stack-sm">
-                      <div className="row-between wrap">
-                        <strong>{r.userName}</strong>
+        <div className="sidebar">
+          {isLeader && (
+            <>
+              <section className="panel accent" aria-labelledby="req-h">
+                <h2 id="req-h" className="panel-title">
+                  Join requests {pendingRequests.length > 0 && <span className="badge badge-accent">{pendingRequests.length}</span>}
+                </h2>
+                {pendingRequests.length === 0 ? (
+                  <Empty>No pending requests.</Empty>
+                ) : (
+                  <ul className="list">
+                    {pendingRequests.map((r) => (
+                      <li key={r.id} className="stack-sm">
+                        <div className="person-head">
+                          <Avatar name={r.userName} />
+                          <strong className="grow">{r.userName}</strong>
+                        </div>
+                        <Chips items={r.userSkills} highlight={team.skillsWanted} />
+                        {r.message && <p className="small">“{r.message}”</p>}
                         <div className="row">
                           <button
                             className="btn btn-primary btn-sm"
@@ -401,32 +447,43 @@ export default function TeamPage() {
                             Decline
                           </button>
                         </div>
-                      </div>
-                      <Chips items={r.userSkills} highlight={team.skillsWanted} />
-                      {r.message && <p className="small">"{r.message}"</p>}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-            <section className="card" aria-labelledby="inv-h">
-              <h2 id="inv-h" className="h-sm">
-                Invite code
-              </h2>
-              <InviteBox teamId={team.id} />
-            </section>
-          </div>
-        )}
-      </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+              <section className="panel" aria-labelledby="inv-h">
+                <h2 id="inv-h" className="panel-title">
+                  Invite code
+                </h2>
+                <InviteBox teamId={team.id} />
+              </section>
+            </>
+          )}
 
-      {isMember && (
-        <section className="card" aria-labelledby="audit-h">
-          <h2 id="audit-h" className="h-sm">
-            Activity log
-          </h2>
-          <AuditLog teamId={team.id} version={version} />
-        </section>
-      )}
+          {isMember && (
+            <section className="panel" aria-labelledby="audit-h">
+              <h2 id="audit-h" className="panel-title">
+                Activity log
+              </h2>
+              <AuditLog teamId={team.id} version={version} />
+            </section>
+          )}
+
+          {!isMember && (
+            <section className="panel" aria-labelledby="how-h">
+              <h2 id="how-h" className="panel-title">
+                How joining works
+              </h2>
+              <ol className="small stack-sm" style={{ paddingLeft: 18, margin: 0 }}>
+                <li>Send a request. The leader sees it instantly.</li>
+                <li>Or ask the leader for an invite code and join straight away.</li>
+                <li>If two people race for the last seat, exactly one gets it.</li>
+              </ol>
+            </section>
+          )}
+        </div>
+      </div>
     </main>
   );
 }

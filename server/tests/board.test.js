@@ -41,6 +41,24 @@ describe('board', () => {
   });
 });
 
+describe('board stats', () => {
+  it('counts teams, open seats, people looking and the most-wanted skills', async () => {
+    const h = await makeHackathon({ maxTeamSize: 2 });
+    const [l1, l2] = await makeUsers(2);
+    const t1 = await createTeamVia(l1, h._id, { skillsWanted: ['python', 'design'] });
+    await createTeamVia(l2, h._id, { skillsWanted: ['python'] });
+    await joinWithCode(await makeUser(), await inviteCode(l1, t1.id)); // t1 is now full
+    const viewer = await makeUser();
+    await api().get(`/api/hackathons/${h._id}/me`).set(viewer.auth); // registers, solo + looking
+
+    const res = await api().get(`/api/hackathons/${h._id}/stats`).set(viewer.auth);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ teams: 2, fullTeams: 1, recruitingTeams: 1, openSeats: 1, participants: 4, inTeams: 3, solo: 1, lookingForTeam: 1 });
+    expect(res.body.mostWantedSkills).toEqual([{ skill: 'python', teams: 1 }]); // only recruiting teams count
+    expect((await api().get(`/api/hackathons/${h._id}/stats`)).status).toBe(401);
+  });
+});
+
 describe('suggestions', () => {
   it('scoring: complementary skills beat duplicate skills; closer timezone breaks ties', () => {
     const base = { needed: ['design', 'ml'], haveSkills: ['react'], offsetA: 330 };
