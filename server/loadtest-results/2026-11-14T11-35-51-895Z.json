@@ -1,0 +1,93 @@
+{
+  "at": "2026-11-14T11:35:51.895Z",
+  "target": "https://hack4hack-entry-production.up.railway.app",
+  "runs": [
+    {
+      "name": "100 virtual users (k6-style): GET /board/teams, think 0.5–1.5 s",
+      "target": "https://hack4hack-entry-production.up.railway.app",
+      "virtualUsers": 100,
+      "durationSec": 30,
+      "requests": 2694,
+      "rps": 89.8,
+      "statuses": {
+        "200": 2694
+      },
+      "errors": 0,
+      "timeouts": 0,
+      "latencyMs": {
+        "p50": 77.4976999999999,
+        "p90": 172.71630000000005,
+        "p95": 213.83190000000104,
+        "p99": 493.01320000000123,
+        "max": 1224.3431
+      },
+      "pass": false
+    },
+    {
+      "name": "Burst: 100 users fire together every 500 ms (200 req/s)",
+      "target": "https://hack4hack-entry-production.up.railway.app",
+      "connections": 100,
+      "durationSec": 30,
+      "ratePerConnection": 2,
+      "requests": 6000,
+      "rps": 200,
+      "statuses": {
+        "200": 6000
+      },
+      "errors": 0,
+      "timeouts": 0,
+      "latencyMs": {
+        "p50": 73.87,
+        "p90": 86.9746,
+        "p95": 102.9463,
+        "p99": 615.0918,
+        "max": 760.646
+      },
+      "pass": true
+    },
+    {
+      "name": "Saturation: GET /board/teams (page 1), no think time",
+      "target": "https://hack4hack-entry-production.up.railway.app",
+      "connections": 100,
+      "durationSec": 30,
+      "ratePerConnection": "unlimited",
+      "requests": 23378,
+      "rps": 779.3,
+      "statuses": {
+        "200": 23378
+      },
+      "errors": 0,
+      "timeouts": 0,
+      "latencyMs": {
+        "p50": 135.1252,
+        "p90": 148.4003,
+        "p95": 159.4736,
+        "p99": 380.3932,
+        "max": 1395.4298
+      },
+      "pass": true
+    },
+    {
+      "name": "Saturation: board mix (teams p1/p2 + people + skill filter)",
+      "target": "https://hack4hack-entry-production.up.railway.app",
+      "connections": 100,
+      "durationSec": 30,
+      "ratePerConnection": "unlimited",
+      "requests": 24272,
+      "rps": 809.1,
+      "statuses": {
+        "200": 24272
+      },
+      "errors": 0,
+      "timeouts": 0,
+      "latencyMs": {
+        "p50": 113.4624,
+        "p90": 157.9291,
+        "p95": 195.968,
+        "p99": 575.6438,
+        "max": 4631.4377
+      },
+      "pass": true
+    }
+  ]
+}

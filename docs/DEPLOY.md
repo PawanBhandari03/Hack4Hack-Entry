@@ -14,7 +14,7 @@ Total time: about 15 minutes. The order matters: deploy the API first, because t
 - Connection string format: `mongodb+srv://<user>:<password>@cluster0.v6elg4f.mongodb.net/hack4hack?retryWrites=true&w=majority`
 
 ## 1a. API on Railway (recommended)
-1. railway.app → **New Project → Deploy from GitHub repo**, then pick `Hack4Hack-Entry`.
+1. railway.app → **New Project → Deploy from GitHub repo**, then pick `TeamUp`.
 2. Service **Settings**:
    - **Root Directory** `/server`
    - Start command `npm start` (auto-detected)
@@ -40,7 +40,7 @@ Total time: about 15 minutes. The order matters: deploy the API first, because t
 - Set the same variables as above.
 
 ## 2. Frontend on Vercel
-1. vercel.com → **Add New → Project**, then import `Hack4Hack-Entry`.
+1. vercel.com → **Add New → Project**, then import `TeamUp`.
 2. Settings:
    - **Root Directory:** `client`
    - Framework: Vite

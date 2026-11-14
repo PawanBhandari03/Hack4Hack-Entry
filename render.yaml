@@ -1,7 +1,7 @@
 # Render Blueprint: New > Blueprint > pick this repo. Secrets are entered in the dashboard (sync: false).
 services:
   - type: web
-    name: hack4hack-teams-api
+    name: teamup-api
     runtime: node
     region: singapore        # closest Render region to the Atlas cluster (AWS Mumbai, ap-south-1)
     plan: starter            # NOT free: 0.1 CPU fails the p95 target (docs/LOADTEST.md §C)
@@ -19,4 +19,4 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: CLIENT_ORIGIN
-        sync: false          # e.g. https://hack4hack-teams.vercel.app,http://localhost:5173
+        sync: false          # e.g. https://teamup-three-tau.vercel.app,http://localhost:5173
