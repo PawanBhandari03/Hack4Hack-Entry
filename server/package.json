@@ -12,7 +12,9 @@
     "verify": "node scripts/verify-integrity.js",
     "lint": "oxlint --deny-warnings src scripts tests",
     "race-demo": "node scripts/race-demo.js",
-    "smoke": "node scripts/smoke.js"
+    "smoke": "node scripts/smoke.js",
+    "race-demo:live": "node --env-file=.env.live scripts/race-demo.js",
+    "verify:live": "node --env-file=.env.live scripts/verify-integrity.js"
   },
   "keywords": [],
   "author": "",
