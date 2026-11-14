@@ -39,6 +39,22 @@ describe('board', () => {
     const res = await api().get(`/api/hackathons/${h._id}/board/teams?cursor=bm9wZQ`).set(u.auth);
     expect(res.status).toBe(400);
   });
+
+  it('never serves a stale seat count right after a join (cache is invalidated on writes)', async () => {
+    const h = await makeHackathon({ maxTeamSize: 4 });
+    const leader = await makeUser();
+    const team = await createTeamVia(leader, h._id);
+    const viewer = await makeUser();
+    const url = `/api/hackathons/${h._id}/board/teams?limit=20`;
+    const before = await api().get(url).set(viewer.auth); // fills the micro-cache
+    expect(before.body.items.find((t) => t.id === team.id).memberCount).toBe(1);
+
+    await joinWithCode(await makeUser(), await inviteCode(leader, team.id));
+    const after = await api().get(url).set(viewer.auth); // same key, well inside the 1 s cache window
+    expect(after.body.items.find((t) => t.id === team.id).memberCount).toBe(2);
+    const stats = await api().get(`/api/hackathons/${h._id}/stats`).set(viewer.auth);
+    expect(stats.body.inTeams).toBe(2);
+  });
 });
 
 describe('board stats', () => {

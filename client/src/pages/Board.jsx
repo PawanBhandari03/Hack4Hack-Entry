@@ -12,6 +12,7 @@ import { tzLabel } from '../lib/format.js';
 function useLiveBoard(kind, hackathonId, skill) {
   const { socket } = useApp();
   const [items, setItems] = useState([]);
+  const [itemsKind, setItemsKind] = useState(kind); // which tab the loaded items belong to
   const [cursor, setCursor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [flash, setFlash] = useState({});
@@ -28,6 +29,7 @@ function useLiveBoard(kind, hackathonId, skill) {
         const res = await api(`/api/hackathons/${hackathonId}/board/${kind}?${qs}`);
         if (id !== reqId.current) return; // a newer request superseded this one
         setItems((prev) => (after ? [...prev, ...res.items.filter((i) => !prev.some((p) => key(p) === key(i)))] : res.items));
+        setItemsKind(kind);
         setCursor(res.nextCursor);
       } finally {
         if (id === reqId.current) setLoading(false);
@@ -80,7 +82,10 @@ function useLiveBoard(kind, hackathonId, skill) {
     };
   }, [socket, hackathonId, kind, skill, load]);
 
-  return { items, loading, hasMore: Boolean(cursor), loadMore: () => load(cursor), flash };
+  // Right after a tab switch the old tab's items are still in state until the new page arrives.
+  // Never render people as team cards (or vice versa): found in QA, it crashed the board.
+  const current = itemsKind === kind;
+  return { items: current ? items : [], loading: loading || !current, hasMore: current && Boolean(cursor), loadMore: () => load(cursor), flash };
 }
 
 const key = (i) => i.id ?? i.userId;

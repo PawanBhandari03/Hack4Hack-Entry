@@ -15,6 +15,7 @@ import mongoose from 'mongoose';
 import { Team, Participant } from '../models/index.js';
 import { teamSummary, personSummary, getHackathonOrThrow } from './teamService.js';
 import { badRequest } from '../lib/errors.js';
+import { onBoardChange } from '../lib/realtime.js';
 
 const FRESH_MS = 1000; // younger than this: serve as is
 const MAX_STALE_MS = 10_000; // between 1 s and 10 s: serve the old copy instantly AND refresh in background
@@ -38,8 +39,10 @@ function cached(key, fn) {
     if (age < MAX_STALE_MS && 'value' in hit) {
       if (!hit.refreshing) {
         hit.refreshing = true;
+        const gen = generation;
         fn()
-          .then((value) => cache.set(key, { at: Date.now(), promise: Promise.resolve(value), value }))
+          // Don't write back if a change invalidated the cache while this query was running.
+          .then((value) => gen === generation && cache.set(key, { at: Date.now(), promise: Promise.resolve(value), value }))
           .catch(() => {
             hit.refreshing = false; // keep serving the stale copy, try again next request
           });
@@ -64,9 +67,23 @@ function cached(key, fn) {
   return entry.promise;
 }
 
+let generation = 0;
+
 export function clearBoardCache() {
+  generation++;
   cache.clear();
 }
+
+/**
+ * Invalidate on every committed board-visible write (join, leave, create, profile change...).
+ * Found in manual QA: with stale-while-revalidate alone, opening the board right after joining
+ * could show your team's OLD seat count for a few seconds. Reads still coalesce through the
+ * cache between writes, so the read-heavy load test is unaffected.
+ */
+onBoardChange((hackathonId) => {
+  generation++;
+  for (const k of cache.keys()) if (k.split(':')[1] === hackathonId) cache.delete(k);
+});
 
 const encodeCursor = (doc) => Buffer.from(`${doc.updatedAt.toISOString()}|${doc._id}`).toString('base64url');
 

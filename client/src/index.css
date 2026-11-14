@@ -212,6 +212,7 @@ main.page { padding-top: 28px; padding-bottom: 80px; min-height: 60vh; }
 .split { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 24px; align-items: start; }
 .split > * + * { margin-top: 0; }
 .sidebar > * + * { margin-top: 24px; }
+.sidebar > .kicker + * { margin-top: 12px; }
 
 /* ---------- stats strip ---------- */
 .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; list-style: none; padding: 0; margin: 0; }
@@ -439,6 +440,9 @@ input:disabled { opacity: 0.65; background: var(--paper-2); }
 .toast-success { background: var(--green); border-color: var(--green); color: #fff; box-shadow: 4px 4px 0 var(--ink); }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) .toast-error, :root:not([data-theme='light']) .toast-success { color: #12110e; }
+}
+@media (min-width: 900px) {
+  .toasts { left: auto; right: 24px; bottom: 24px; align-items: flex-end; }
 }
 @keyframes toast-in { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
 .spinner { width: 28px; height: 28px; margin: 24px auto; border: 3px solid var(--rule-strong); border-top-color: var(--ink); border-radius: 50%; animation: spin 0.8s linear infinite; }

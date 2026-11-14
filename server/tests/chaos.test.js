@@ -104,7 +104,10 @@ describe('chaos: server killed mid-join', () => {
     // Restart and retry ONLY the requests that never got an answer, with the SAME idempotency key.
     await startServer();
     for (let i = 0; i < ops.length; i++) {
-      for (let attempt = 0; results[i].status === 'NETWORK' || results[i].body?.error?.code === 'REQUEST_IN_PROGRESS'; attempt++) {
+      // Retry exactly like the real client (client/src/api.js): network errors, REQUEST_IN_PROGRESS,
+      // and 503 TRY_AGAIN (seen on a slow, memory-starved machine while the restarted server warms up).
+      const pending = (r) => r.status === 'NETWORK' || r.status === 503 || r.body?.error?.code === 'REQUEST_IN_PROGRESS';
+      for (let attempt = 0; pending(results[i]); attempt++) {
         if (attempt > 30) throw new Error('retry never settled');
         if (attempt > 0) await new Promise((r) => setTimeout(r, 300));
         results[i] = await call(ops[i]);

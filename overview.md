@@ -342,6 +342,22 @@ Pawan found the old UI plain and pointed to **Broadsheet**, his own winning DOGF
 - **Kept on purpose:** every label, role and ARIA attribute the Playwright tests use, so keyboard, phone and axe checks still apply. Checked with screenshots at 1366 px and 390 px: no horizontal scroll.
 - **Interview angle:** "I reused the design language from my previous winning project but adapted it to the domain: team formation reads naturally as classified ads, and the stats strip and skill chart make 10,000 seeded users feel real."
 
+### Step 28 — Full manual QA pass: 2 real bugs found and fixed
+A Playwright script used the demo accounts to click through every flow at 1366 px and 390 px, failing on any console error. The flows: create team → invite code → join by code → request → live accept → transfer leadership → tabs, skill filter, chart filter, load more → profile save → everyone leaves (team auto-deleted). It found:
+1. **Stale seat count after a join (server).** Opening the board right after joining showed your team at its *old* size for a few seconds. Cause: the stale-while-revalidate board cache from Step 11 serves entries up to 10 s old.
+   - **Fix:** `publish()` (which runs only after a transaction commits) notifies the board service, which drops that hackathon's cache entries.
+   - A **generation counter** stops an in-flight background refresh from writing old data back.
+   - Reads between writes still share one query, so the read-heavy load test is unaffected.
+   - Regression test: load the board, join, reload immediately, and expect the new count. **45 tests.**
+2. **Board crash when switching tabs back (client, pre-existing).** For one render after a tab switch, the *people* list from the previous tab was drawn as *team* cards. Those cards read `skillsWanted.length` on a person, which crashed, and gave duplicate React keys.
+   - **Fix:** the loaded items are tagged with the tab they belong to, and items are never rendered under the wrong tab.
+- **Layout polish:**
+  - The team page's activity log moved under Members, so the columns balance.
+  - Regular members get a "Growing the team" panel instead of an empty sidebar.
+  - Kickers sit on their own line, the profile-preview spacing is fixed, and toasts sit bottom-right on desktop.
+- **Chaos test hardening:** on a memory-starved laptop, a few retried requests got `503 TRY_AGAIN` (the server's deliberate "busy, retry" answer). The test's retry loop now retries 503 exactly like the real client does. Integrity was never violated.
+- **Interview angle:** "Unit tests passed, but a scripted walkthrough of real flows found a cache-freshness bug and a render race. That's why I test like a user too. Each fix got a regression test, and both were invisible to the existing tests."
+
 ---
 
 ## 4. Interview cheat sheet (say these out loud until they feel natural)
@@ -411,6 +427,6 @@ Setup before recording: deployed app open in 2 browser windows side by side (nor
 | 1:30–2:40 | `teamService.js` → `addMemberInTxn`; `txn.js` | "The core idea: two conditional updates in one transaction: claim the person only if `teamId` is null, take the seat only if `openSeats > 0`. If 50 people race, MongoDB lets one transaction write the team document and aborts the others with a write conflict. They retry with backoff, see zero seats, and get TEAM_FULL." |
 | 2:40–3:20 | Terminal: `TARGET=<prod> npm run race-demo` → `49 × TEAM_FULL, 1 × joined, integrity OK` | "This is 50 real users hitting the last seat on the deployed app right now. Exactly one wins, and the integrity checker confirms counts and leaders are consistent." |
 | 3:20–3:50 | `/metrics` → `txn_retries_total`; mention the retry-storm story | "My first version used the driver's immediate retries: 1,010 retries for one race. Backoff with jitter and writing the hot document last brought it to 49." |
-| 3:50–4:20 | Actions tab (all green) + `docs/LOADTEST.md` table | "44 API tests including race and chaos tests, plus 5 Playwright browser tests including accessibility. Board p95 is 95 ms with 100 users. It first failed at 1 second; profiling found JWT verification was half the CPU." |
+| 3:50–4:20 | Actions tab (all green) + `docs/LOADTEST.md` table | "45 API tests including race and chaos tests, plus 5 Playwright browser tests including accessibility. Board p95 is 95 ms with 100 users. It first failed at 1 second; profiling found JWT verification was half the CPU." |
 | 4:20–4:50 | Phone-width window + Tab through the board | "Works on phones and with the keyboard alone. axe finds no serious violations." |
 | 4:50–5:00 | `docs/DESIGN.md` §4 | "With another week: Redis adapter to scale out, team finalization, refresh tokens. Thanks!" |

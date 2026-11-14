@@ -362,6 +362,7 @@ export default function TeamPage() {
       </section>
 
       <div className="split">
+        <div className="stack">
         <section className="panel" aria-labelledby="members-h">
           <h2 id="members-h">Members</h2>
           <ul className="list">
@@ -412,6 +413,16 @@ export default function TeamPage() {
           )}
         </section>
 
+          {isMember && (
+            <section className="panel" aria-labelledby="audit-h">
+              <h2 id="audit-h" className="panel-title">
+                Activity log
+              </h2>
+              <AuditLog teamId={team.id} version={version} />
+            </section>
+          )}
+        </div>
+
         <div className="sidebar">
           {isLeader && (
             <>
@@ -461,15 +472,6 @@ export default function TeamPage() {
             </>
           )}
 
-          {isMember && (
-            <section className="panel" aria-labelledby="audit-h">
-              <h2 id="audit-h" className="panel-title">
-                Activity log
-              </h2>
-              <AuditLog teamId={team.id} version={version} />
-            </section>
-          )}
-
           {!isMember && (
             <section className="panel" aria-labelledby="how-h">
               <h2 id="how-h" className="panel-title">
@@ -479,6 +481,19 @@ export default function TeamPage() {
                 <li>Send a request. The leader sees it instantly.</li>
                 <li>Or ask the leader for an invite code and join straight away.</li>
                 <li>If two people race for the last seat, exactly one gets it.</li>
+              </ol>
+            </section>
+          )}
+
+          {isMember && !isLeader && (
+            <section className="panel" aria-labelledby="grow-h">
+              <h2 id="grow-h" className="panel-title">
+                Growing the team
+              </h2>
+              <ol className="small stack-sm" style={{ paddingLeft: 18, margin: 0 }}>
+                <li>{leader?.name ?? 'The leader'} accepts join requests and creates invite codes.</li>
+                <li>Know someone good? Ask the leader for a code to share with them.</li>
+                <li>If the leader leaves, the longest-standing member takes over automatically.</li>
               </ol>
             </section>
           )}

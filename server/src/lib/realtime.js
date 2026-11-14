@@ -16,8 +16,21 @@ export const rooms = {
   user: (id) => `user:${id}`,
 };
 
+/**
+ * Called with the hackathon id whenever a board-visible change is published, even with no
+ * sockets attached. The board service uses it to drop its read cache, so a page loaded right
+ * after a change never shows the old seat count.
+ */
+const boardChangeListeners = [];
+export function onBoardChange(fn) {
+  boardChangeListeners.push(fn);
+}
+
 export function publish(events) {
-  if (!io || !events?.length) return;
+  if (!events?.length) return;
+  const changed = new Set(events.filter((e) => e.event.startsWith('board:')).map((e) => e.room.slice('hackathon:'.length)));
+  for (const hackathonId of changed) for (const fn of boardChangeListeners) fn(hackathonId);
+  if (!io) return;
   for (const { room, event, payload } of events) {
     io.to(room).emit(event, payload);
   }
